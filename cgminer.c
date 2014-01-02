@@ -4464,6 +4464,16 @@ void write_config(FILE *fcfg)
 		fprintf(fcfg, ",\n\"icarus-options\" : \"%s\"", json_escape(opt_icarus_options));
 	if (opt_icarus_timing)
 		fprintf(fcfg, ",\n\"icarus-timing\" : \"%s\"", json_escape(opt_icarus_timing));
+#ifdef USE_BMSC
+	if (opt_bmsc_options)
+		fprintf(fcfg, ",\n\"bmsc-options\" : \"%s\"", json_escape(opt_bmsc_options));
+	if (opt_bmsc_timing)
+		fprintf(fcfg, ",\n\"bmsc-timing\" : \"%s\"", json_escape(opt_bmsc_timing));
+	if (opt_bmsc_freq)
+		fprintf(fcfg, ",\n\"bmsc-freq\" : \"%s\"", json_escape(opt_bmsc_freq));
+	if (opt_bmsc_rdreg)
+		fprintf(fcfg, ",\n\"bmsc-rdreg\" : \"%s\"", json_escape(opt_bmsc_rdreg));
+#endif
 #ifdef USE_KLONDIKE
 	if (opt_klondike_options)
 		fprintf(fcfg, ",\n\"klondike-options\" : \"%s\"", json_escape(opt_icarus_options));

@@ -740,7 +740,7 @@ static struct cgpu_info *bmsc_detect_one(struct libusb_device *dev, struct usb_f
 	unsigned char nonce_bin[BMSC_READ_SIZE];
 	struct BMSC_WORK workdata;
 	char *nonce_hex;
-	int baud = 115200, work_division = 1, fpga_count = 1, readtimeout = 1;
+	int baud = 115200, work_division = 1, fpga_count = 1, readtimeout = 20;
 	struct cgpu_info *bmsc;
 	int ret, err, amount, tries, i;
 	bool ok;
@@ -758,8 +758,10 @@ static struct cgpu_info *bmsc_detect_one(struct libusb_device *dev, struct usb_f
 	char msg[10240] = {0};
 	int sendfreqstatus = 1;
 
+#if 0
 	if (opt_bmsc_options == NULL)
 		return NULL;
+#endif
 
 	if ((sizeof(workdata) << 1) != (sizeof(golden_ob) - 1))
 		quithere(1, "Data and golden_ob sizes don't match");
