@@ -1138,8 +1138,8 @@ static struct api_data *print_data(struct api_data *root, char *buf, bool isjson
 				break;
 			case API_TIMEVAL:
 				sprintf(buf, "%ld.%06ld",
-					((struct timeval *)(root->data))->tv_sec,
-					((struct timeval *)(root->data))->tv_usec);
+					(long int)((struct timeval *)(root->data))->tv_sec,
+					(long int)((struct timeval *)(root->data))->tv_usec);
 				break;
 			case API_TEMP:
 				sprintf(buf, "%.2f", *((float *)(root->data)));

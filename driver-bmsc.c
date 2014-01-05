@@ -1270,7 +1270,7 @@ static int64_t bmsc_scanwork(struct thr_info *thr)
 		applog(LOG_DEBUG, "%s%d: no nonce = 0x%08lX hashes (%ld.%06lds)",
 				bmsc->drv->name, bmsc->device_id,
 				(long unsigned int)estimate_hashes,
-				elapsed.tv_sec, elapsed.tv_usec);
+				elapsed.tv_sec, (long int)elapsed.tv_usec);
 
 		hash_count = 0;
 		goto out;
@@ -1294,7 +1294,7 @@ static int64_t bmsc_scanwork(struct thr_info *thr)
 	applog(LOG_DEBUG, "%s%d: nonce = 0x%08x = 0x%08lX hashes (%ld.%06lds)",
 			bmsc->drv->name, bmsc->device_id,
 			nonce, (long unsigned int)hash_count,
-			elapsed.tv_sec, elapsed.tv_usec);
+			elapsed.tv_sec, (long int)elapsed.tv_usec);
 
 out:
 	free_work(work);
