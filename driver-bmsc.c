@@ -1276,7 +1276,7 @@ static int64_t bmsc_scanwork(struct thr_info *thr)
 		goto out;
 	}
 
-	memcpy((char *)&nonce, nonce_bin, sizeof(nonce_bin));
+	memcpy((char *)&nonce, nonce_bin, sizeof(nonce));
 	nonce = htobe32(nonce);
 	curr_hw_errors = bmsc->hw_errors;
 	submit_nonce(thr, work, nonce);
