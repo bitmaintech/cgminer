@@ -455,7 +455,7 @@ static void bmsc_initialise(struct cgpu_info *bmsc, int baud)
 			transfer(bmsc, PL2303_VENDOR_OUT, PL2303_REQUEST_VENDOR, PL2303_VALUE_VENDOR,
 				 interface, C_VENDOR);
 			break;
-		case IDENT_AMU:
+		case IDENT_ANT:
 			// Enable the UART
 			transfer(bmsc, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_ENABLE,
 				 CP210X_VALUE_UART_ENABLE,
@@ -572,7 +572,7 @@ static void set_timing_mode(int this_option_offset, struct cgpu_info *bmsc, int 
 		case IDENT_LLT:
 			info->Hs = LANCELOT_HASH_TIME;
 			break;
-		case IDENT_AMU:
+		case IDENT_ANT:
 			info->Hs = ASICMINERUSB_HASH_TIME;
 			break;
 		case IDENT_CMR1:
@@ -675,7 +675,7 @@ static void get_options(int this_option_offset, struct cgpu_info *bmsc, int *bau
 		case IDENT_LLT:
 			*baud = BMSC_IO_SPEED;
 			break;
-		case IDENT_AMU:
+		case IDENT_ANT:
 			*baud = BMSC_IO_SPEED;
 			break;
 		case IDENT_CMR1:
@@ -785,7 +785,7 @@ static struct cgpu_info *bmsc_detect_one(struct libusb_device *dev, struct usb_f
 		case IDENT_ICA:
 		case IDENT_BLT:
 		case IDENT_LLT:
-		case IDENT_AMU:
+		case IDENT_ANT:
 		case IDENT_CMR1:
 			info->timeout = BMSC_WAIT_TIMEOUT;
 			break;

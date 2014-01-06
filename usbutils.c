@@ -301,65 +301,15 @@ static struct usb_intinfo cmr2_ints[] = {
 #endif
 
 #ifdef USE_BMSC
-static struct usb_epinfo ica_epinfos[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(3), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(2), 0, 0 }
-};
-
-static struct usb_intinfo ica_ints[] = {
-	USB_EPS(0, ica_epinfos)
-};
-
-static struct usb_epinfo amu_epinfos[] = {
+static struct usb_epinfo ant_epinfos[] = {
 	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
 	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(1), 0, 0 }
 };
 
-static struct usb_intinfo amu_ints[] = {
-	USB_EPS(0, amu_epinfos)
+static struct usb_intinfo ant_ints[] = {
+	USB_EPS(0, ant_epinfos)
 };
 
-static struct usb_epinfo llt_epinfos[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(2), 0, 0 }
-};
-
-static struct usb_intinfo llt_ints[] = {
-	USB_EPS(0, llt_epinfos)
-};
-
-static struct usb_epinfo cmr1_epinfos[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(2), 0, 0 }
-};
-
-static struct usb_intinfo cmr1_ints[] = {
-	USB_EPS(0, cmr1_epinfos)
-};
-
-static struct usb_epinfo cmr2_epinfos0[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(1), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(2), 0, 0 }
-};
-static struct usb_epinfo cmr2_epinfos1[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(3), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(4), 0, 0 },
-};
-static struct usb_epinfo cmr2_epinfos2[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(5), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(6), 0, 0 },
-};
-static struct usb_epinfo cmr2_epinfos3[] = {
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPI(7), 0, 0 },
-	{ LIBUSB_TRANSFER_TYPE_BULK,	64,	EPO(8), 0, 0 }
-};
-
-static struct usb_intinfo cmr2_ints[] = {
-	USB_EPS_CTRL(0, 1, cmr2_epinfos0),
-	USB_EPS_CTRL(1, 2, cmr2_epinfos1),
-	USB_EPS_CTRL(2, 3, cmr2_epinfos2),
-	USB_EPS_CTRL(3, 4, cmr2_epinfos3)
-};
 #endif
 
 #define IDVENDOR_FTDI 0x0403
@@ -610,68 +560,14 @@ static struct usb_find_devices find_dev[] = {
 #ifdef USE_BMSC
 	{
 		.drv = DRIVER_bmsc,
-		.name = "ICA",
-		.ident = IDENT_ICA,
-		.idVendor = 0x067b,
-		.idProduct = 0x2303,
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_UNUSED,
-		INTINFO(ica_ints) },
-	{
-		.drv = DRIVER_bmsc,
-		.name = "AMU",
-		.ident = IDENT_AMU,
+		.name = "ANT",
+		.ident = IDENT_ANT,
 		.idVendor = 0x10c4,
 		.idProduct = 0xea60,
 		.config = 1,
 		.timeout = ICARUS_TIMEOUT_MS,
 		.latency = LATENCY_UNUSED,
-		INTINFO(amu_ints) },
-	{
-		.drv = DRIVER_bmsc,
-		.name = "BLT",
-		.ident = IDENT_BLT,
-		.idVendor = IDVENDOR_FTDI,
-		.idProduct = 0x6001,
-		.iProduct = "FT232R USB UART",
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_STD,
-		INTINFO(llt_ints) },
-	// For any that don't match the above "BLT"
-	{
-		.drv = DRIVER_bmsc,
-		.name = "LLT",
-		.ident = IDENT_LLT,
-		.idVendor = IDVENDOR_FTDI,
-		.idProduct = 0x6001,
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_STD,
-		INTINFO(llt_ints) },
-	{
-		.drv = DRIVER_bmsc,
-		.name = "CMR",
-		.ident = IDENT_CMR1,
-		.idVendor = IDVENDOR_FTDI,
-		.idProduct = 0x6014,
-		.iProduct = "Cairnsmore1",
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_STD,
-		INTINFO(cmr1_ints) },
-	{
-		.drv = DRIVER_bmsc,
-		.name = "CMR",
-		.ident = IDENT_CMR2,
-		.idVendor = IDVENDOR_FTDI,
-		.idProduct = 0x8350,
-		.iProduct = "Cairnsmore1",
-		.config = 1,
-		.timeout = ICARUS_TIMEOUT_MS,
-		.latency = LATENCY_STD,
-		INTINFO(cmr2_ints) },
+		INTINFO(ant_ints) },
 #endif
 	{ DRIVER_MAX, NULL, 0, 0, 0, NULL, NULL, 0, 0, 0, 0, NULL }
 };
