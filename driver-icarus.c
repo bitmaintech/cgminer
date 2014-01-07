@@ -805,7 +805,7 @@ static struct cgpu_info *icarus_detect_one(struct libusb_device *dev, struct usb
 
 	const char golden_nonce[] = "000187a2";
 	const uint32_t golden_nonce_val = 0x000187a2;
-	unsigned char nonce_bin[ICARUS_READ_SIZE];
+	unsigned char nonce_bin[ICARUS_MAX_SIZE];
 	struct ICARUS_WORK workdata;
 	char *nonce_hex;
 	int baud, uninitialised_var(work_division), uninitialised_var(fpga_count);
@@ -1082,7 +1082,7 @@ static int64_t icarus_scanwork(struct thr_info *thr)
 	struct cgpu_info *icarus = thr->cgpu;
 	struct ICARUS_INFO *info = (struct ICARUS_INFO *)(icarus->device_data);
 	int ret, err, amount;
-	unsigned char nonce_bin[ICARUS_READ_SIZE];
+	unsigned char nonce_bin[ICARUS_MAX_SIZE];
 	struct ICARUS_WORK workdata;
 	char *ob_hex;
 	uint32_t nonce;
@@ -1167,7 +1167,7 @@ static int64_t icarus_scanwork(struct thr_info *thr)
 		goto out;
 	}
 
-	memcpy((char *)&nonce, nonce_bin, sizeof(nonce_bin));
+	memcpy((char *)&nonce, nonce_bin, sizeof(nonce));
 	nonce = htobe32(nonce);
 	curr_hw_errors = icarus->hw_errors;
 	submit_nonce(thr, work, nonce);
