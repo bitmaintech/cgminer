@@ -53,6 +53,7 @@
 #define ICARUS_IO_SPEED 115200
 
 // The size of a successful nonce read
+#define ICARUS_MAX_SIZE  8
 #define ICARUS_READ_SIZE 4
 
 // Ensure the sizes are correct for the Serial read
@@ -469,7 +470,7 @@ static int icarus_get_nonce(struct cgpu_info *icarus, unsigned char *buf, struct
 
 	cgtime(tv_start);
 	err = usb_read_ii_timeout_cancellable(icarus, info->intinfo, (char *)buf,
-					      ICARUS_READ_SIZE, &amt, read_time,
+					      ICARUS_MAX_SIZE, &amt, read_time,
 					      C_GETRESULTS);
 	cgtime(tv_finish);
 
@@ -480,7 +481,10 @@ static int icarus_get_nonce(struct cgpu_info *icarus, unsigned char *buf, struct
 		return ICA_NONCE_ERROR;
 	}
 
-	if (amt >= ICARUS_READ_SIZE)
+	if (amt > ICARUS_READ_SIZE)			// Possibly an AntMiner U1
+		return ICA_NONCE_ERROR;
+
+	if (amt == ICARUS_READ_SIZE)
 		return ICA_NONCE_OK;
 
 	rc = SECTOMS(tdiff(tv_finish, tv_start));
