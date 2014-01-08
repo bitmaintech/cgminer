@@ -27,6 +27,7 @@
 #include <fcntl.h>
 # ifdef __linux
 #  include <sys/prctl.h>
+#  include <execinfo.h>
 # endif
 # include <sys/socket.h>
 # include <netinet/in.h>
@@ -44,7 +45,6 @@
 #include "compat.h"
 #include "util.h"
 
-#include <execinfo.h>
 
 #define DEFAULT_SOCKWAIT 60
 
@@ -2645,12 +2645,14 @@ void _cgsem_wait(cgsem_t *cgsem, const char *file, const char *func, const int l
 
 static void _cgsem_stackdump( void )
 {
+# ifdef __linux
        #define SIZE 100
        int nptrs;
        void *buffer[SIZE];
 
        nptrs = backtrace(buffer, SIZE);
        backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
+#endif
 }
 
 int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, const int line)
