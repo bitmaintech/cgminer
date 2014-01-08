@@ -53,7 +53,6 @@
 #define ICARUS_IO_SPEED 115200
 
 // The size of a successful nonce read
-#define ICARUS_MAX_SIZE  8
 #define ICARUS_READ_SIZE 4
 
 // Ensure the sizes are correct for the Serial read
@@ -416,6 +415,13 @@ static void icarus_initialise(struct cgpu_info *icarus, int baud)
 				 interface, C_VENDOR);
 			break;
 		case IDENT_AMU:
+			// Reset the UART
+			transfer(icarus, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_RESET, 0,
+				 interface, C_RESET_UART);
+
+			if (icarus->usbinfo.nodev)
+				return;
+
 			// Enable the UART
 			transfer(icarus, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_ENABLE,
 				 CP210X_VALUE_UART_ENABLE,
@@ -470,7 +476,7 @@ static int icarus_get_nonce(struct cgpu_info *icarus, unsigned char *buf, struct
 
 	cgtime(tv_start);
 	err = usb_read_ii_timeout_cancellable(icarus, info->intinfo, (char *)buf,
-					      ICARUS_MAX_SIZE, &amt, read_time,
+					      ICARUS_READ_SIZE, &amt, read_time,
 					      C_GETRESULTS);
 	cgtime(tv_finish);
 
@@ -481,7 +487,7 @@ static int icarus_get_nonce(struct cgpu_info *icarus, unsigned char *buf, struct
 		return ICA_NONCE_ERROR;
 	}
 
-	if (amt > ICARUS_READ_SIZE)			// Possibly an AntMiner U1
+	if (amt > ICARUS_READ_SIZE)
 		return ICA_NONCE_ERROR;
 
 	if (amt == ICARUS_READ_SIZE)
@@ -805,7 +811,7 @@ static struct cgpu_info *icarus_detect_one(struct libusb_device *dev, struct usb
 
 	const char golden_nonce[] = "000187a2";
 	const uint32_t golden_nonce_val = 0x000187a2;
-	unsigned char nonce_bin[ICARUS_MAX_SIZE];
+	unsigned char nonce_bin[ICARUS_READ_SIZE];
 	struct ICARUS_WORK workdata;
 	char *nonce_hex;
 	int baud, uninitialised_var(work_division), uninitialised_var(fpga_count);
@@ -1082,7 +1088,7 @@ static int64_t icarus_scanwork(struct thr_info *thr)
 	struct cgpu_info *icarus = thr->cgpu;
 	struct ICARUS_INFO *info = (struct ICARUS_INFO *)(icarus->device_data);
 	int ret, err, amount;
-	unsigned char nonce_bin[ICARUS_MAX_SIZE];
+	unsigned char nonce_bin[ICARUS_READ_SIZE];
 	struct ICARUS_WORK workdata;
 	char *ob_hex;
 	uint32_t nonce;

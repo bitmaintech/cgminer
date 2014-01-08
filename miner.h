@@ -155,16 +155,10 @@ static inline int fsync (int fd)
 #endif
 #endif /* !defined(__GLXBYTEORDER_H__) */
 
-#ifndef bswap_8
-extern unsigned char bit_swap_table[256];
-#define bswap_8(x) (bit_swap_table[x])
-#endif
-
 /* This assumes htobe32 is a macro in endian.h, and if it doesn't exist, then
  * htobe64 also won't exist */
 #ifndef htobe32
 # if __BYTE_ORDER == __LITTLE_ENDIAN
-#  define htole8(x) (x)
 #  define htole16(x) (x)
 #  define htole32(x) (x)
 #  define htole64(x) (x)
@@ -175,7 +169,6 @@ extern unsigned char bit_swap_table[256];
 #  define htobe32(x) bswap_32(x)
 #  define htobe64(x) bswap_64(x)
 # elif __BYTE_ORDER == __BIG_ENDIAN
-#  define htole8(x) bswap_8(x)
 #  define htole16(x) bswap_16(x)
 #  define htole32(x) bswap_32(x)
 #  define le32toh(x) bswap_32(x)
@@ -188,17 +181,6 @@ extern unsigned char bit_swap_table[256];
 #else
 #error UNKNOWN BYTE ORDER
 #endif
-
-#else
-
-# if __BYTE_ORDER == __LITTLE_ENDIAN
-#  define htole8(x) (x)
-# elif __BYTE_ORDER == __BIG_ENDIAN
-#  define htole8(x) bswap_8(x)
-#else
-#error UNKNOWN BYTE ORDER
-#endif
-
 #endif
 
 #undef unlikely
@@ -246,8 +228,8 @@ extern unsigned char bit_swap_table[256];
  * listed driver. */
 #define FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
 	DRIVER_ADD_COMMAND(bitforce) \
-	DRIVER_ADD_COMMAND(icarus) \
 	DRIVER_ADD_COMMAND(bmsc) \
+	DRIVER_ADD_COMMAND(icarus) \
 	DRIVER_ADD_COMMAND(modminer)
 
 #define ASIC_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
@@ -256,9 +238,10 @@ extern unsigned char bit_swap_table[256];
 	DRIVER_ADD_COMMAND(hashfast) \
 	DRIVER_ADD_COMMAND(klondike) \
 	DRIVER_ADD_COMMAND(knc) \
+	DRIVER_ADD_COMMAND(drillbit) \
 	DRIVER_ADD_COMMAND(bab) \
-	DRIVER_ADD_COMMAND(avalon) \
-	DRIVER_ADD_COMMAND(bitmain)
+	DRIVER_ADD_COMMAND(minion) \
+	DRIVER_ADD_COMMAND(avalon)
 
 #define DRIVER_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
 	FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
@@ -439,13 +422,6 @@ struct cgpu_info {
 	struct cg_usb_device *usbdev;
 #endif
 #ifdef USE_AVALON
-	struct work **works;
-	int work_array;
-	int queued;
-	int results;
-#endif
-#ifdef USE_BITMAIN
-	int device_fd;
 	struct work **works;
 	int work_array;
 	int queued;
@@ -983,12 +959,11 @@ extern bool opt_worktime;
 extern char *opt_avalon_options;
 extern char *opt_bitburner_fury_options;
 #endif
-#ifdef USE_BITMAIN
-extern char *opt_bitmain_options;
-extern bool opt_bitmain_hwerror;
-#endif
 #ifdef USE_KLONDIKE
 extern char *opt_klondike_options;
+#endif
+#ifdef USE_DRILLBIT
+extern char *opt_drillbit_options;
 #endif
 #ifdef USE_USBUTILS
 extern char *opt_usb_select;
@@ -1086,7 +1061,6 @@ extern enum pool_strategy pool_strategy;
 extern int opt_rotate_period;
 extern double total_rolling;
 extern double total_mhashes_done;
-extern double g_displayed_rolling;
 extern unsigned int new_blocks;
 extern unsigned int found_blocks;
 extern int total_accepted, total_rejected, total_diff1;;
@@ -1220,7 +1194,7 @@ struct pool {
 	char *nonce1;
 	unsigned char *nonce1bin;
 	size_t n1_len;
-	uint32_t nonce2;
+	uint64_t nonce2;
 	int n2size;
 	char *sessionid;
 	bool has_stratum;
@@ -1296,7 +1270,7 @@ struct work {
 
 	bool		stratum;
 	char 		*job_id;
-	uint32_t	nonce2;
+	uint64_t	nonce2;
 	size_t		nonce2_len;
 	char		*ntime;
 	double		sdiff;
@@ -1373,9 +1347,8 @@ extern bool test_nonce(struct work *work, uint32_t nonce);
 extern bool test_nonce_diff(struct work *work, uint32_t nonce, double diff);
 extern void submit_tested_work(struct thr_info *thr, struct work *work);
 extern bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce);
-extern bool submit_nonce_1(struct thr_info *thr, struct work *work, uint32_t nonce, int * nofull);
-extern void submit_nonce_2(struct work *work);
-extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce, int noffset);
+extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce,
+			  int noffset);
 extern struct work *get_work(struct thr_info *thr, const int thr_id);
 extern void __add_queued(struct cgpu_info *cgpu, struct work *work);
 extern struct work *get_queued(struct cgpu_info *cgpu);
@@ -1384,9 +1357,6 @@ extern struct work *get_queue_work(struct thr_info *thr, struct cgpu_info *cgpu,
 extern struct work *__find_work_bymidstate(struct work *que, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *find_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *clone_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
-extern struct work *__find_work_byid(struct work *que, uint32_t id);
-extern struct work *find_queued_work_byid(struct cgpu_info *cgpu, uint32_t id);
-extern struct work *clone_queued_work_byid(struct cgpu_info *cgpu, uint32_t id);
 extern void __work_completed(struct cgpu_info *cgpu, struct work *work);
 extern int age_queued_work(struct cgpu_info *cgpu, double secs);
 extern void work_completed(struct cgpu_info *cgpu, struct work *work);

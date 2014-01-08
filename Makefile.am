@@ -56,10 +56,6 @@ if HAS_AVALON
 cgminer_SOURCES += driver-avalon.c driver-avalon.h
 endif
 
-if HAS_BITMAIN
-cgminer_SOURCES += driver-bitmain.c driver-bitmain.h
-endif
-
 if HAS_KNC
 cgminer_SOURCES += driver-knc-spi-fpga.c
 endif
@@ -80,12 +76,16 @@ if HAS_BITFURY
 cgminer_SOURCES += driver-bitfury.c driver-bitfury.h
 endif
 
-if HAS_ICARUS
-cgminer_SOURCES += driver-icarus.c
+if HAS_DRILLBIT
+cgminer_SOURCES += driver-drillbit.c driver-drillbit.h
 endif
 
 if HAS_BMSC
 cgminer_SOURCES += driver-bmsc.c
+endif
+
+if HAS_ICARUS
+cgminer_SOURCES += driver-icarus.c
 endif
 
 if HAS_KLONDIKE
@@ -94,6 +94,10 @@ endif
 
 if HAS_BAB
 cgminer_SOURCES += driver-bab.c
+endif
+
+if HAS_MINION
+cgminer_SOURCES += driver-minion.c
 endif
 
 if HAS_MODMINER

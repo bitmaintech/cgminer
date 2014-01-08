@@ -50,12 +50,6 @@
 
 #define FTDI_VALUE_DATA_AVA 8
 
-// Bitmain
-#define FTDI_VALUE_BAUD_BTM 0x001A
-#define FTDI_INDEX_BAUD_BTM 0x0000
-
-#define FTDI_VALUE_DATA_BTM 8
-
 // BitBurner
 #define BITBURNER_REQUEST ((uint8_t)0x42)
 #define BITBURNER_VALUE 0x4242
@@ -84,6 +78,7 @@
 #define CP210X_TYPE_OUT 0x41
 
 #define CP210X_REQUEST_IFC_ENABLE 0x00
+#define CP210X_REQUEST_IFC_RESET 0x11
 #define CP210X_REQUEST_DATA 0x07
 #define CP210X_REQUEST_BAUD 0x1e
 
@@ -143,8 +138,6 @@ enum sub_ident {
 	IDENT_AMU,
 	IDENT_ANT,
 	IDENT_AVA,
-	IDENT_BMM,
-	IDENT_BMS,
 	IDENT_BAJ,
 	IDENT_BAL,
 	IDENT_BAM,
@@ -162,7 +155,7 @@ enum sub_ident {
 	IDENT_KLN,
 	IDENT_LLT,
 	IDENT_MMQ,
-	IDENT_ZTX
+	IDENT_DRB
 };
 
 struct usb_find_devices {
@@ -332,17 +325,28 @@ struct cg_usb_info {
 	USB_ADD_COMMAND(C_GET_AVALON_READY, "AvalonReady") \
 	USB_ADD_COMMAND(C_AVALON_RESET, "AvalonReset") \
 	USB_ADD_COMMAND(C_GET_AVALON_RESET, "GetAvalonReset") \
-	USB_ADD_COMMAND(C_BITMAIN_SEND, "BitmainSend") \
-	USB_ADD_COMMAND(C_BITMAIN_READ, "BitmainRead") \
-	USB_ADD_COMMAND(C_BITMAIN_TOKEN_TXCONFIG, "BitmainTokenTxConfig") \
-	USB_ADD_COMMAND(C_BITMAIN_TOKEN_TXTASK, "BitmainTokenTxTask") \
-	USB_ADD_COMMAND(C_BITMAIN_TOKEN_RXSTATUS, "BitmainTokenRxStatus") \
-	USB_ADD_COMMAND(C_BITMAIN_DATA_RXSTATUS, "BitmainDataRxStatus") \
-	USB_ADD_COMMAND(C_BITMAIN_DATA_RXNONCE, "BitmainDataRxNonce") \
 	USB_ADD_COMMAND(C_FTDI_STATUS, "FTDIStatus") \
+	USB_ADD_COMMAND(C_RESET_UART, "ResetUART") \
 	USB_ADD_COMMAND(C_ENABLE_UART, "EnableUART") \
 	USB_ADD_COMMAND(C_BB_SET_VOLTAGE, "SetCoreVoltage") \
 	USB_ADD_COMMAND(C_BB_GET_VOLTAGE, "GetCoreVoltage") \
+	USB_ADD_COMMAND(C_BF_RESET, "BFReset") \
+	USB_ADD_COMMAND(C_BF_OPEN, "BFOpen") \
+	USB_ADD_COMMAND(C_BF_INIT, "BFInit") \
+	USB_ADD_COMMAND(C_BF_CLOSE, "BFClose") \
+	USB_ADD_COMMAND(C_BF_REQINFO, "BFRequestInfo") \
+	USB_ADD_COMMAND(C_BF_GETINFO, "BFGetInfo") \
+	USB_ADD_COMMAND(C_BF_REQRESET, "BFRequestReset") \
+	USB_ADD_COMMAND(C_BF_GETRESET, "BFGetReset") \
+	USB_ADD_COMMAND(C_BF_REQWORK, "BFRequestWork") \
+	USB_ADD_COMMAND(C_BF_GETWORK, "BFGetWork") \
+	USB_ADD_COMMAND(C_BF_GETRES, "BFGetResults") \
+	USB_ADD_COMMAND(C_BF_FLUSH, "BFFlush") \
+	USB_ADD_COMMAND(C_BF_IFLUSH, "BFInterruptFlush") \
+	USB_ADD_COMMAND(C_BF_IDENTIFY, "BFIdentify") \
+	USB_ADD_COMMAND(C_BF_DETECTCHIPS, "BFDetectChips") \
+	USB_ADD_COMMAND(C_BF_CONFIG, "BFConfig") \
+        USB_ADD_COMMAND(C_BF_GETTEMP, "BFGetTemp") \
 	USB_ADD_COMMAND(C_ATMEL_RESET, "AtmelReset") \
 	USB_ADD_COMMAND(C_ATMEL_OPEN, "AtmelOpen") \
 	USB_ADD_COMMAND(C_ATMEL_INIT, "AtmelInit") \
@@ -363,6 +367,7 @@ struct cg_usb_info {
 	USB_ADD_COMMAND(C_BXF_VERSION, "BXFVersion") \
 	USB_ADD_COMMAND(C_BXF_MAXROLL, "BXFMaxRoll") \
 	USB_ADD_COMMAND(C_BXF_FLUSH, "BXFFlush") \
+	USB_ADD_COMMAND(C_BXF_CLOCK, "BXFClock") \
 	USB_ADD_COMMAND(C_HF_RESET, "HFReset") \
 	USB_ADD_COMMAND(C_HF_PLL_CONFIG, "HFPLLConfig") \
 	USB_ADD_COMMAND(C_HF_ADDRESS, "HFAddress") \
@@ -393,16 +398,6 @@ enum usb_cmds {
 
 struct device_drv;
 struct cgpu_info;
-
-#ifdef USE_BITMAIN
-struct cgpu_info *btm_alloc_cgpu(struct device_drv *drv, int threads);
-struct cgpu_info *btm_free_cgpu(struct cgpu_info *cgpu);
-void btm_uninit(struct cgpu_info *cgpu);
-bool btm_init(struct cgpu_info *cgpu, const char * devpath);
-void btm_detect(struct device_drv *drv, bool (*device_detect)(const char*));
-int btm_read(struct cgpu_info *cgpu, char *buf, size_t bufsize);
-int btm_write(struct cgpu_info *cgpu, char *buf, size_t bufsize);
-#endif
 
 bool async_usb_transfers(void);
 void cancel_usb_transfers(void);

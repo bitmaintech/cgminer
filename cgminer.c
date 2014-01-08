@@ -68,12 +68,12 @@ char *curly = ":D";
 #include "driver-avalon.h"
 #endif
 
-#ifdef USE_BITMAIN
-#include "driver-bitmain.h"
-#endif
-
 #ifdef USE_BFLSC
 #include "driver-bflsc.h"
+#endif
+
+#ifdef USE_BITFURY
+#include "driver-bitfury.h"
 #endif
 
 #ifdef USE_HASHFAST
@@ -84,7 +84,7 @@ bool opt_hfa_pll_bypass;
 bool opt_hfa_dfu_boot;
 #endif
 
-#if defined(USE_BITFORCE) || defined(USE_ICARUS) || defined(USE_AVALON) || defined(USE_BMSC) || defined (USE_BITMAIN) || defined(USE_MODMINER)
+#if defined(USE_BITFORCE) || defined(USE_ICARUS) || defined(USE_AVALON) || defined(USE_BMSC) || defined(USE_MODMINER)
 #	define USE_FPGA
 #endif
 
@@ -173,11 +173,11 @@ bool opt_worktime;
 char *opt_avalon_options = NULL;
 char *opt_bitburner_fury_options = NULL;
 #endif
-#ifdef USE_BITMAIN
-char *opt_bitmain_options = NULL;
-#endif
 #ifdef USE_KLONDIKE
 char *opt_klondike_options = NULL;
+#endif
+#ifdef USE_DRILLBIT
+char *opt_drillbit_options = NULL;
 #endif
 #ifdef USE_USBUTILS
 char *opt_usb_select = NULL;
@@ -242,7 +242,6 @@ pthread_cond_t gws_cond;
 double total_rolling;
 double total_mhashes_done;
 static struct timeval total_tv_start, total_tv_end;
-double g_displayed_rolling = 0;
 
 cglock_t control_lock;
 pthread_mutex_t stats_lock;
@@ -253,7 +252,7 @@ int total_getworks, total_stale, total_discarded;
 double total_diff_accepted, total_diff_rejected, total_diff_stale;
 static int staged_rollable;
 unsigned int new_blocks;
-static unsigned int work_block = 0;
+static unsigned int work_block;
 unsigned int found_blocks;
 
 unsigned int local_work;
@@ -654,14 +653,7 @@ static char *set_int_0_to_100(const char *arg, int *i)
 }
 #endif
 
-#ifdef USE_BITMAIN
-static char *set_int_0_to_100(const char *arg, int *i)
-{
-	return set_int_range(arg, i, 0, 100);
-}
-#endif
-
-#ifdef USE_BFLSC
+#if defined(USE_BFLSC) || defined(USE_BITFURY)
 static char *set_int_0_to_200(const char *arg, int *i)
 {
 	return set_int_range(arg, i, 0, 200);
@@ -1088,19 +1080,19 @@ static char *set_bmsc_rdreg(const char *arg)
 }
 #endif
 
-#ifdef USE_BITMAIN
-static char *set_bitmain_options(const char *arg)
+#ifdef USE_KLONDIKE
+static char *set_klondike_options(const char *arg)
 {
-	opt_set_charp(arg, &opt_bitmain_options);
+	opt_set_charp(arg, &opt_klondike_options);
 
 	return NULL;
 }
 #endif
 
-#ifdef USE_KLONDIKE
-static char *set_klondike_options(const char *arg)
+#ifdef USE_DRILLBIT
+static char *set_drillbit_options(const char *arg)
 {
-	opt_set_charp(arg, &opt_klondike_options);
+	opt_set_charp(arg, &opt_drillbit_options);
 
 	return NULL;
 }
@@ -1171,6 +1163,11 @@ static struct opt_table opt_config_table[] = {
 		     set_int_0_to_200, opt_show_intval, &opt_bflsc_overheat,
 		     "Set overheat temperature where BFLSC devices throttle, 0 to disable"),
 #endif
+#ifdef USE_BITFURY
+	OPT_WITH_ARG("--bxf-temp-target",
+		     set_int_0_to_200, opt_show_intval, &opt_bxf_temp_target,
+		     "Set target temperature for BXF devices"),
+#endif
 #ifdef HAVE_CURSES
 	OPT_WITHOUT_ARG("--compact",
 			opt_set_bool, &opt_compact,
@@ -1230,7 +1227,7 @@ static struct opt_table opt_config_table[] = {
 		     "Set frequency range for avalon-auto, single value or range"),
 	OPT_WITH_ARG("--avalon-options",
 		     set_avalon_options, NULL, NULL,
-		     "Set avalon options baud:miners:asic:timeout:freq"),
+		     "Set avalon options baud:miners:asic:timeout:freq:tech"),
 	OPT_WITH_ARG("--avalon-temp",
 		     set_int_0_to_100, opt_show_intval, &opt_avalon_temp,
 		     "Set avalon target temperature"),
@@ -1261,32 +1258,6 @@ static struct opt_table opt_config_table[] = {
 		     opt_set_bool, &opt_bmsc_rdworktest,
 		     "Record work test data to file"),
 #endif
-#ifdef USE_BITMAIN
-	OPT_WITH_ARG("--bitmain-dev",
-			set_bitmain_dev, NULL, NULL,
-			"Set bitmain device (default: usb mode, other windows: COM1 or linux: /dev/bitmain-asic)"),
-	OPT_WITHOUT_ARG("--bitmain-hwerror",
-			opt_set_bool, &opt_bitmain_hwerror,
-			"Set bitmain device detect hardware error"),
-	OPT_WITHOUT_ARG("--bitmain-auto",
-			opt_set_bool, &opt_bitmain_auto,
-			"Adjust bitmain overclock frequency dynamically for best hashrate"),
-	OPT_WITH_ARG("--bitmain-cutoff",
-		     set_int_0_to_100, opt_show_intval, &opt_bitmain_overheat,
-		     "Set bitmain overheat cut off temperature"),
-	OPT_WITH_ARG("--bitmain-fan",
-		     set_bitmain_fan, NULL, NULL,
-		     "Set fanspeed percentage for bitmain, single value or range (default: 20-100)"),
-	OPT_WITH_ARG("--bitmain-freq",
-		     set_bitmain_freq, NULL, NULL,
-		     "Set frequency range for bitmain-auto, single value or range"),
-	OPT_WITH_ARG("--bitmain-options",
-		     set_bitmain_options, NULL, NULL,
-		     "Set bitmain options baud:miners:asic:timeout:freq"),
-	OPT_WITH_ARG("--bitmain-temp",
-		     set_int_0_to_100, opt_show_intval, &opt_bitmain_temp,
-		     "Set bitmain target temperature"),
-#endif
 #ifdef USE_HASHFAST
 	OPT_WITHOUT_ARG("--hfa-dfu-boot",
 			opt_set_bool, &opt_hfa_dfu_boot,
@@ -1305,6 +1276,11 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--klondike-options",
 		     set_klondike_options, NULL, NULL,
 		     "Set klondike options clock:temptarget"),
+#endif
+#ifdef USE_DRILLBIT
+        OPT_WITH_ARG("--drillbit-options",
+                     set_drillbit_options, NULL, NULL,
+                     "Set drillbit options <int|ext>:clock[:clock_divider][:voltage]"),
 #endif
 	OPT_WITHOUT_ARG("--load-balance",
 		     set_loadbalance, &pool_strategy,
@@ -1581,9 +1557,6 @@ static char *opt_verusage_and_exit(const char *extra)
 #ifdef USE_AVALON
 		"avalon "
 #endif
-#ifdef USE_BITMAIN
-		"bitmain "
-#endif
 #ifdef USE_BFLSC
 		"bflsc "
 #endif
@@ -1592,6 +1565,9 @@ static char *opt_verusage_and_exit(const char *extra)
 #endif
 #ifdef USE_BITFURY
 		"bitfury "
+#endif
+#ifdef USE_DRILLBIT
+                "drillbit "
 #endif
 #ifdef USE_HASHFAST
 		"hashfast "
@@ -1610,6 +1586,9 @@ static char *opt_verusage_and_exit(const char *extra)
 #endif
 #ifdef USE_BAB
 		"BaB "
+#endif
+#ifdef USE_MINION
+		"minion "
 #endif
 #ifdef USE_MODMINER
 		"modminer "
@@ -1854,13 +1833,15 @@ static void gen_gbt_work(struct pool *pool, struct work *work)
 {
 	unsigned char *merkleroot;
 	struct timeval now;
+	uint64_t nonce2le;
 
 	cgtime(&now);
 	if (now.tv_sec - pool->tv_lastwork.tv_sec > 60)
 		update_gbt(pool);
 
 	cg_wlock(&pool->gbt_lock);
-	memcpy(pool->coinbase + pool->nonce2_offset, &pool->nonce2, 4);
+	nonce2le = htole64(pool->nonce2);
+	memcpy(pool->coinbase + pool->nonce2_offset, &nonce2le, pool->n2size);
 	pool->nonce2++;
 	cg_dwlock(&pool->gbt_lock);
 	merkleroot = __gbt_merkleroot(pool);
@@ -1959,8 +1940,9 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
 	free(pool->coinbasetxn);
 	pool->coinbasetxn = strdup(coinbasetxn);
 	cbt_len = strlen(pool->coinbasetxn) / 2;
-	pool->coinbase_len = cbt_len + 4;
-	/* We add 4 bytes of extra data corresponding to nonce2 of stratum */
+	/* We add 8 bytes of extra data corresponding to nonce2 */
+	pool->n2size = 8;
+	pool->coinbase_len = cbt_len + pool->n2size;
 	cal_len = pool->coinbase_len + 1;
 	align_len(&cal_len);
 	free(pool->coinbase);
@@ -1971,7 +1953,7 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
 	extra_len = (uint8_t *)(pool->coinbase + 41);
 	orig_len = *extra_len;
 	hex2bin(pool->coinbase + 42, pool->coinbasetxn + 84, orig_len);
-	*extra_len += 4;
+	*extra_len += pool->n2size;
 	hex2bin(pool->coinbase + 42 + *extra_len, pool->coinbasetxn + 84 + (orig_len * 2),
 		cbt_len - orig_len - 42);
 	pool->nonce2_offset = orig_len + 42;
@@ -4478,6 +4460,10 @@ void write_config(FILE *fcfg)
 	if (opt_klondike_options)
 		fprintf(fcfg, ",\n\"klondike-options\" : \"%s\"", json_escape(opt_icarus_options));
 #endif
+#ifdef USE_DRILLBIT
+        if (opt_drillbit_options)
+                fprintf(fcfg, ",\n\"drillbit-options\" : \"%s\"", json_escape(opt_drillbit_options));
+#endif
 #ifdef USE_USBUTILS
 	if (opt_usb_select)
 		fprintf(fcfg, ",\n\"usb\" : \"%s\"", json_escape(opt_usb_select));
@@ -5109,7 +5095,6 @@ static void hashmeter(int thr_id, struct timeval *diff,
 
 	dh64 = (double)total_mhashes_done / total_secs * 1000000ull;
 	dr64 = (double)total_rolling * 1000000ull;
-	g_displayed_rolling = total_rolling / 1000.0;
 	suffix_string(dh64, displayed_hashes, sizeof(displayed_hashes), 4);
 	suffix_string(dr64, displayed_rolling, sizeof(displayed_rolling), 4);
 
@@ -5482,10 +5467,11 @@ static void *stratum_sthread(void *userdata)
 		quit(1, "Failed to create stratum_q in stratum_sthread");
 
 	while (42) {
-		char noncehex[12], nonce2hex[20];
+		char noncehex[12], nonce2hex[20], s[1024];
 		struct stratum_share *sshare;
 		uint32_t *hash32, nonce;
-		char s[1024], nonce2[8];
+		unsigned char nonce2[8];
+		uint64_t *nonce2_64;
 		struct work *work;
 		bool submitted;
 
@@ -5520,10 +5506,9 @@ static void *stratum_sthread(void *userdata)
 		sshare->id = swork_id++;
 		mutex_unlock(&sshare_lock);
 
-		memset(nonce2, 0, 8);
-		/* We only use uint32_t sized nonce2 increments internally */
-		memcpy(nonce2, &work->nonce2, sizeof(uint32_t));
-		__bin2hex(nonce2hex, (const unsigned char *)nonce2, work->nonce2_len);
+		nonce2_64 = (uint64_t *)nonce2;
+		*nonce2_64 = htole64(work->nonce2);
+		__bin2hex(nonce2hex, nonce2, work->nonce2_len);
 
 		snprintf(s, sizeof(s),
 			"{\"params\": [\"%s\", \"%s\", \"%s\", \"%s\", \"%s\"], \"id\": %d, \"method\": \"mining.submit\"}",
@@ -5927,12 +5912,15 @@ static void gen_stratum_work(struct pool *pool, struct work *work)
 {
 	unsigned char merkle_root[32], merkle_sha[64];
 	uint32_t *data32, *swap32;
+	uint64_t nonce2le;
 	int i;
 
 	cg_wlock(&pool->data_lock);
 
-	/* Update coinbase */
-	memcpy(pool->coinbase + pool->nonce2_offset, &pool->nonce2, sizeof(uint32_t));
+	/* Update coinbase. Always use an LE encoded nonce2 to fill in values
+	 * from left to right and prevent overflow errors with small n2sizes */
+	nonce2le = htole64(pool->nonce2);
+	memcpy(pool->coinbase + pool->nonce2_offset, &nonce2le, pool->n2size);
 	work->nonce2 = pool->nonce2++;
 	work->nonce2_len = pool->n2size;
 
@@ -5972,7 +5960,8 @@ static void gen_stratum_work(struct pool *pool, struct work *work)
 		merkle_hash = bin2hex((const unsigned char *)merkle_root, 32);
 		applog(LOG_DEBUG, "Generated stratum merkle %s", merkle_hash);
 		applog(LOG_DEBUG, "Generated stratum header %s", header);
-		applog(LOG_DEBUG, "Work job_id %s nonce2 %d ntime %s", work->job_id, work->nonce2, work->ntime);
+		applog(LOG_DEBUG, "Work job_id %s nonce2 %"PRIu64" ntime %s", work->job_id,
+		       work->nonce2, work->ntime);
 		free(header);
 		free(merkle_hash);
 	}
@@ -6153,31 +6142,6 @@ bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce)
 	}
 
 	return true;
-}
-
-bool submit_nonce_1(struct thr_info *thr, struct work *work, uint32_t nonce, int * nofull)
-{
-	*nofull = 0;
-	if (test_nonce(work, nonce)) {
-		update_work_stats(thr, work);
-
-		if (!fulltest(work->hash, work->target)) {
-			*nofull = 1;
-			applog(LOG_INFO, "Share above target");
-			return false;
-		}
-	} else {
-		inc_hw_errors(thr);
-		return false;
-	}
-	return true;
-}
-
-void submit_nonce_2(struct work *work)
-{
-	struct work *work_out;
-	work_out = copy_work(work);
-	submit_work_async(work_out);
 }
 
 /* Allows drivers to submit work items where the driver has changed the ntime
@@ -6495,44 +6459,6 @@ struct work *clone_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate
 
 	rd_lock(&cgpu->qlock);
 	work = __find_work_bymidstate(cgpu->queued_work, midstate, midstatelen, data, offset, datalen);
-	if (work)
-		ret = copy_work(work);
-	rd_unlock(&cgpu->qlock);
-
-	return ret;
-}
-
-struct work *__find_work_byid(struct work *que, uint32_t id)
-{
-	struct work *work, *tmp, *ret = NULL;
-
-	HASH_ITER(hh, que, work, tmp) {
-		if (work->id == id) {
-			ret = work;
-			break;
-		}
-	}
-
-	return ret;
-}
-
-struct work *find_queued_work_byid(struct cgpu_info *cgpu, uint32_t id)
-{
-	struct work *ret;
-
-	rd_lock(&cgpu->qlock);
-	ret = __find_work_byid(cgpu->queued_work, id);
-	rd_unlock(&cgpu->qlock);
-
-	return ret;
-}
-
-struct work *clone_queued_work_byid(struct cgpu_info *cgpu, uint32_t id)
-{
-	struct work *work, *ret = NULL;
-
-	rd_lock(&cgpu->qlock);
-	work = __find_work_byid(cgpu->queued_work, id);
 	if (work)
 		ret = copy_work(work);
 	rd_unlock(&cgpu->qlock);
@@ -7756,7 +7682,7 @@ bool add_cgpu(struct cgpu_info *cgpu)
 {
 	static struct _cgpu_devid_counter *devids = NULL;
 	struct _cgpu_devid_counter *d;
-	
+
 	HASH_FIND_STR(devids, cgpu->drv->name, d);
 	if (d)
 		cgpu->device_id = ++d->lastid;
@@ -8303,8 +8229,8 @@ int main(int argc, char *argv[])
 			}
 #ifdef HAVE_CURSES
 			if (use_curses) {
-				halfdelay(150);
-				applog(LOG_ERR, "Press any key to exit, or cgminer will try again in 15s.");
+				halfdelay(600);
+				applog(LOG_ERR, "Press any key to exit, or cgminer will try again in 60s.");
 				if (getch() != ERR)
 					quit(0, "No servers could be used! Exiting.");
 				cbreak();

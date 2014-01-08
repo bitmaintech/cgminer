@@ -1,8 +1,8 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [3])
-m4_define([v_min], [8])
-m4_define([v_mic], [5])
+m4_define([v_min], [9])
+m4_define([v_mic], [0])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_ver], [v_maj.v_min.v_mic])
 m4_define([lt_rev], m4_eval(v_maj + v_min))
@@ -137,17 +137,6 @@ if test "x$avalon" = xyes; then
 fi
 AM_CONDITIONAL([HAS_AVALON], [test x$avalon = xyes])
 
-bitmain="no"
-
-AC_ARG_ENABLE([bitmain],
-	[AC_HELP_STRING([--enable-bitmain],[Compile support for Bitmain Multi Chain (default disabled)])],
-	[bitmain=$enableval]
-	)
-if test "x$bitmain" = xyes; then
-	AC_DEFINE([USE_BITMAIN], [1], [Defined to 1 if Bitmain Multi Chain support is wanted])
-fi
-AM_CONDITIONAL([HAS_BITMAIN], [test x$bitmain = xyes])
-
 bab="no"
 
 AC_ARG_ENABLE([bab],
@@ -188,9 +177,31 @@ AC_ARG_ENABLE([bitfury],
 	[bitfury=$enableval]
 	)
 if test "x$bitfury" = xyes; then
-	AC_DEFINE([USE_BITFURY], [1], [Defined to 1 if BitFury support is wanted])
+	AC_DEFINE([USE_BITFURY], [1], [Defined to 1 if BitFury ASIC support is wanted])
 fi
 AM_CONDITIONAL([HAS_BITFURY], [test x$bitfury = xyes])
+
+drillbit="no"
+
+AC_ARG_ENABLE([drillbit],
+	[AC_HELP_STRING([--enable-drillbit],[Compile support for Drillbit BitFury ASICs (default disabled)])],
+	[drillbit=$enableval]
+	)
+if test "x$drillbit" = xyes; then
+	AC_DEFINE([USE_DRILLBIT], [1], [Defined to 1 if Drillbit BitFury support is wanted])
+fi
+AM_CONDITIONAL([HAS_DRILLBIT], [test x$drillbit = xyes])
+
+bmsc="no"
+
+AC_ARG_ENABLE([bmsc],
+      [AC_HELP_STRING([--enable-bmsc],[Compile support for Bitmain Single Chain (default disabled)])],
+      [bmsc=$enableval]
+      )
+if test "x$bmsc" = xyes; then
+      AC_DEFINE([USE_BMSC], [1], [Defined to 1 if Bitmain Single Chain support is wanted])
+fi
+AM_CONDITIONAL([HAS_BMSC], [test x$bmsc = xyes])
 
 hashfast="no"
 
@@ -214,17 +225,6 @@ if test "x$icarus" = xyes; then
 fi
 AM_CONDITIONAL([HAS_ICARUS], [test x$icarus = xyes])
 
-bmsc="no"
-
-AC_ARG_ENABLE([bmsc],
-	[AC_HELP_STRING([--enable-bmsc],[Compile support for Bitmain Single Chain (default disabled)])],
-	[bmsc=$enableval]
-	)
-if test "x$bmsc" = xyes; then
-	AC_DEFINE([USE_BMSC], [1], [Defined to 1 if Bitmain Single Chain support is wanted])
-fi
-AM_CONDITIONAL([HAS_BMSC], [test x$bmsc = xyes])
-
 klondike="no"
 
 AC_ARG_ENABLE([klondike],
@@ -246,6 +246,17 @@ if test "x$knc" = xyes; then
 	AC_DEFINE([USE_KNC], [1], [Defined to 1 if KnC miner support is wanted])
 fi
 AM_CONDITIONAL([HAS_KNC], [test x$knc = xyes])
+
+minion="no"
+
+AC_ARG_ENABLE([minion],
+	[AC_HELP_STRING([--enable-minion],[Compile support for BlackArrow Bitfury (default disabled)])],
+	[minion=$enableval]
+	)
+if test "x$minion" = xyes; then
+	AC_DEFINE([USE_MINION], [1], [Defined to 1 if Minion BlackArrow ASIC support is wanted])
+fi
+AM_CONDITIONAL([HAS_MINION], [test x$minion = xyes])
 
 modminer="no"
 
@@ -282,7 +293,7 @@ else
 	])
 fi
 
-if test x$avalon$bitmain$bitforce$bitfury$modminer$bflsc$icarus$bmsc$hashfast$klondike != xnononononononono; then
+if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit != xnonononononononono; then
 	want_usbutils=true
 else
 	want_usbutils=false
@@ -461,10 +472,10 @@ else
 	echo "  Avalon.ASICs.........: Disabled"
 fi
 
-if test "x$bitmain" = xyes; then
-	echo "  Bitmain.MultiChain...: Enabled"
+if test "x$minion" = xyes; then
+	echo "  BlackArrowMinion.ASIC: Enabled"
 else
-	echo "  Bitmain.MultiChain...: Disabled"
+	echo "  BlackArrowMinion.ASIC: Disabled"
 fi
 
 if test "x$bab" = xyes; then
@@ -491,6 +502,18 @@ else
 	echo "  BitFury.ASICs........: Disabled"
 fi
 
+if test "x$drillbit" = xyes; then
+	echo "  Drillbit.BitFury.....: Enabled"
+else
+	echo "  Drillbit.BitFury.....: Disabled"
+fi
+
+if test "x$bmsc" = xyes; then
+      echo "  Bitmain.SingleChain..: Enabled"
+else
+      echo "  Bitmain.SingleChain..: Disabled"
+fi
+
 if test "x$hashfast" = xyes; then
 	echo "  Hashfast.ASICs.......: Enabled"
 else
@@ -501,12 +524,6 @@ if test "x$icarus" = xyes; then
 	echo "  Icarus.ASICs/FPGAs...: Enabled"
 else
 	echo "  Icarus.ASICs/FPGAs...: Disabled"
-fi
-
-if test "x$bmsc" = xyes; then
-	echo "  Bitmain.SingleChain..: Enabled"
-else
-	echo "  Bitmain.SingleChain..: Disabled"
 fi
 
 if test "x$klondike" = xyes; then
@@ -527,7 +544,7 @@ else
 	echo "  ModMiner.FPGAs.......: Disabled"
 fi
 
-if test "x$avalon$bitmain$bab$bflsc$bitforce$bitfury$hashfast$icarus$bmsc$klondike$knc$modminer" = xnononononononononono; then
+if test "x$avalon$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$bmsc$minion" = xnonononononononononononono; then
 	AC_MSG_ERROR([No mining configured in])
 fi
 
