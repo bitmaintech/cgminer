@@ -25,11 +25,11 @@
 #include "miner.h"
 #include "util.h"
 
-#if defined(USE_BFLSC) || defined(USE_AVALON) || defined(USE_BITMAIN) || defined(USE_HASHFAST) || defined(USE_BITFURY) || defined(USE_KLONDIKE) || defined(USE_KNC) || defined(USE_BAB)
+#if defined(USE_BFLSC) || defined(USE_AVALON) || defined(USE_HASHFAST) || defined(USE_BITFURY) || defined(USE_KLONDIKE) || defined(USE_KNC) || defined(USE_BAB) || defined(USE_DRILLBIT) || defined(USE_MINION)
 #define HAVE_AN_ASIC 1
 #endif
 
-#if defined(USE_BITFORCE) || defined(USE_ICARUS) || defined(USE_BMSC) || defined(USE_MODMINER)
+#if defined(USE_BITFORCE) || defined(USE_ICARUS) || defined(USE_MODMINER)
 #define HAVE_AN_FPGA 1
 #endif
 
@@ -156,9 +156,6 @@ static const char *DEVICECODE = ""
 #ifdef USE_AVALON
 			"AVA "
 #endif
-#ifdef USE_BITMAIN
-			"BTM "
-#endif
 #ifdef USE_BFLSC
 			"BAS "
 #endif
@@ -171,11 +168,11 @@ static const char *DEVICECODE = ""
 #ifdef USE_HASHFAST
 			"HFA "
 #endif
+#ifdef USE_DRILLBIT
+			"DRB "
+#endif
 #ifdef USE_ICARUS
 			"ICA "
-#endif
-#ifdef USE_BMSC
-			"BTM "
 #endif
 #ifdef USE_MODMINER
 			"MMQ "
@@ -185,6 +182,9 @@ static const char *DEVICECODE = ""
 #endif
 #ifdef USE_BAB
 			"BaB "
+#endif
+#ifdef USE_MINION
+			"MBA "
 #endif
 #ifdef USE_MODMINER
 			"MMQ "
@@ -2322,14 +2322,13 @@ static void poolstatus(struct io_data *io_data, __maybe_unused SOCKETTYPE c, __m
 		root = api_add_uint(root, "Getworks", &(pool->getwork_requested), false);
 		root = api_add_int(root, "Accepted", &(pool->accepted), false);
 		root = api_add_int(root, "Rejected", &(pool->rejected), false);
-		//root = api_add_int(root, "Works", &pool->works, false);
+		root = api_add_int(root, "Works", &pool->works, false);
 		root = api_add_uint(root, "Discarded", &(pool->discarded_work), false);
 		root = api_add_uint(root, "Stale", &(pool->stale_shares), false);
 		root = api_add_uint(root, "Get Failures", &(pool->getfail_occasions), false);
 		root = api_add_uint(root, "Remote Failures", &(pool->remotefail_occasions), false);
 		root = api_add_escape(root, "User", pool->rpc_user, false);
 		root = api_add_time(root, "Last Share Time", &(pool->last_share_time), false);
-		root = api_add_string(root, "Diff", pool->diff, false);
 		root = api_add_int(root, "Diff1 Shares", &(pool->diff1), false);
 		if (pool->rpc_proxy) {
 			root = api_add_const(root, "Proxy Type", proxytype(pool->rpc_proxytype), false);
@@ -2370,7 +2369,7 @@ static void summary(struct io_data *io_data, __maybe_unused SOCKETTYPE c, __mayb
 	struct api_data *root = NULL;
 	char buf[TMPBUFSIZ];
 	bool io_open;
-	double utility, ghs, work_utility;
+	double utility, mhs, work_utility;
 
 	message(io_data, MSG_SUMM, 0, NULL, isjson);
 	io_open = io_add(io_data, isjson ? COMSTR JSON_SUMMARY : _SUMMARY COMSTR);
@@ -2379,12 +2378,14 @@ static void summary(struct io_data *io_data, __maybe_unused SOCKETTYPE c, __mayb
 	mutex_lock(&hash_lock);
 
 	utility = total_accepted / ( total_secs ? total_secs : 1 ) * 60;
-	ghs = total_mhashes_done / 1000 / total_secs;
+	mhs = total_mhashes_done / total_secs;
 	work_utility = total_diff1 / ( total_secs ? total_secs : 1 ) * 60;
 
 	root = api_add_elapsed(root, "Elapsed", &(total_secs), true);
-	root = api_add_mhs(root, "GHS 5s", &(g_displayed_rolling), false);
-	root = api_add_mhs(root, "GHS av", &(ghs), false);
+	root = api_add_mhs(root, "MHS av", &(mhs), false);
+	char mhsname[27];
+	sprintf(mhsname, "MHS %ds", opt_log_interval);
+	root = api_add_mhs(root, mhsname, &(total_rolling), false);
 	root = api_add_uint(root, "Found Blocks", &(found_blocks), true);
 	root = api_add_int(root, "Getworks", &(total_getworks), true);
 	root = api_add_int(root, "Accepted", &(total_accepted), true);
@@ -4617,7 +4618,7 @@ void api(int api_thr_id)
 					message(io_data, MSG_INVCMD, 0, NULL, isjson);
 					send_result(io_data, c, isjson);
 				}
-				if (json_is_object(json_config))
+				if (isjson && json_is_object(json_config))
 					json_decref(json_config);
 			}
 		}
