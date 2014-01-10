@@ -359,103 +359,14 @@ static void bmsc_initialise(struct cgpu_info *bmsc, int baud)
 	ident = usb_ident(bmsc);
 
 	switch (ident) {
-		case IDENT_BLT:
-		case IDENT_LLT:
-		case IDENT_CMR1:
-		case IDENT_CMR2:
-			// Reset
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_RESET,
-				 interface, C_RESET);
+		case IDENT_ANT:
+			// Reset the UART
+			transfer(bmsc, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_RESET, 0,
+				 interface, C_RESET_UART);
 
 			if (bmsc->usbinfo.nodev)
 				return;
 
-			// Latency
-			_usb_ftdi_set_latency(bmsc, info->intinfo);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Set data control
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_DATA, FTDI_VALUE_DATA_BLT,
-				 interface, C_SETDATA);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// default to BLT/LLT 115200
-			wValue = FTDI_VALUE_BAUD_BLT;
-			wIndex = FTDI_INDEX_BAUD_BLT;
-
-			if (ident == IDENT_CMR1 || ident == IDENT_CMR2) {
-				switch (baud) {
-					case 115200:
-						wValue = FTDI_VALUE_BAUD_CMR_115;
-						wIndex = FTDI_INDEX_BAUD_CMR_115;
-						break;
-					case 57600:
-						wValue = FTDI_VALUE_BAUD_CMR_57;
-						wIndex = FTDI_INDEX_BAUD_CMR_57;
-						break;
-					default:
-						quit(1, "bmsc_intialise() invalid baud (%d) for Cairnsmore1", baud);
-						break;
-				}
-			}
-
-			// Set the baud
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_BAUD, wValue,
-				 (wIndex & 0xff00) | interface, C_SETBAUD);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Set Modem Control
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_MODEM, FTDI_VALUE_MODEM,
-				 interface, C_SETMODEM);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Set Flow Control
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_FLOW, FTDI_VALUE_FLOW,
-				 interface, C_SETFLOW);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Clear any sent data
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_PURGE_TX,
-				 interface, C_PURGETX);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Clear any received data
-			transfer(bmsc, FTDI_TYPE_OUT, FTDI_REQUEST_RESET, FTDI_VALUE_PURGE_RX,
-				 interface, C_PURGERX);
-			break;
-		case IDENT_ICA:
-			// Set Data Control
-			transfer(bmsc, PL2303_CTRL_OUT, PL2303_REQUEST_CTRL, PL2303_VALUE_CTRL,
-				 interface, C_SETDATA);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Set Line Control
-			uint32_t ica_data[2] = { PL2303_VALUE_LINE0, PL2303_VALUE_LINE1 };
-			_transfer(bmsc, PL2303_CTRL_OUT, PL2303_REQUEST_LINE, PL2303_VALUE_LINE,
-				 interface, &ica_data[0], PL2303_VALUE_LINE_SIZE, C_SETLINE);
-
-			if (bmsc->usbinfo.nodev)
-				return;
-
-			// Vendor
-			transfer(bmsc, PL2303_VENDOR_OUT, PL2303_REQUEST_VENDOR, PL2303_VALUE_VENDOR,
-				 interface, C_VENDOR);
-			break;
-		case IDENT_AMU:
 			// Enable the UART
 			transfer(bmsc, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_ENABLE,
 				 CP210X_VALUE_UART_ENABLE,
@@ -565,21 +476,8 @@ static void set_timing_mode(int this_option_offset, struct cgpu_info *bmsc, int 
 
 	ident = usb_ident(bmsc);
 	switch (ident) {
-		case IDENT_ICA:
-			info->Hs = BMSC_REV3_HASH_TIME;
-			break;
-		case IDENT_BLT:
-		case IDENT_LLT:
-			info->Hs = LANCELOT_HASH_TIME;
-			break;
-		case IDENT_AMU:
+		case IDENT_ANT:
 			info->Hs = ASICMINERUSB_HASH_TIME;
-			break;
-		case IDENT_CMR1:
-			info->Hs = CAIRNSMORE1_HASH_TIME;
-			break;
-		case IDENT_CMR2:
-			info->Hs = CAIRNSMORE2_HASH_TIME;
 			break;
 		default:
 			quit(1, "Bmsc get_options() called with invalid %s ident=%d",
@@ -670,18 +568,7 @@ static void get_options(int this_option_offset, struct cgpu_info *bmsc, int *bau
 
 	ident = usb_ident(bmsc);
 	switch (ident) {
-		case IDENT_ICA:
-		case IDENT_BLT:
-		case IDENT_LLT:
-			*baud = BMSC_IO_SPEED;
-			break;
-		case IDENT_AMU:
-			*baud = BMSC_IO_SPEED;
-			break;
-		case IDENT_CMR1:
-			*baud = BMSC_IO_SPEED;
-			break;
-		case IDENT_CMR2:
+		case IDENT_ANT:
 			*baud = BMSC_IO_SPEED;
 			break;
 		default:
@@ -740,7 +627,7 @@ static struct cgpu_info *bmsc_detect_one(struct libusb_device *dev, struct usb_f
 	unsigned char nonce_bin[BMSC_READ_SIZE];
 	struct BMSC_WORK workdata;
 	char *nonce_hex;
-	int baud = 115200, work_division = 1, fpga_count = 1, readtimeout = 1;
+	int baud = 115200, work_division = 1, fpga_count = 1, readtimeout = 20;
 	struct cgpu_info *bmsc;
 	int ret, err, amount, tries, i;
 	bool ok;
@@ -758,8 +645,10 @@ static struct cgpu_info *bmsc_detect_one(struct libusb_device *dev, struct usb_f
 	char msg[10240] = {0};
 	int sendfreqstatus = 1;
 
+#if 0
 	if (opt_bmsc_options == NULL)
 		return NULL;
+#endif
 
 	if ((sizeof(workdata) << 1) != (sizeof(golden_ob) - 1))
 		quithere(1, "Data and golden_ob sizes don't match");
@@ -780,23 +669,8 @@ static struct cgpu_info *bmsc_detect_one(struct libusb_device *dev, struct usb_f
 
 	info->ident = usb_ident(bmsc);
 	switch (info->ident) {
-		case IDENT_ICA:
-		case IDENT_BLT:
-		case IDENT_LLT:
-		case IDENT_AMU:
-		case IDENT_CMR1:
+		case IDENT_ANT:
 			info->timeout = BMSC_WAIT_TIMEOUT;
-			break;
-		case IDENT_CMR2:
-			if (found->intinfo_count != CAIRNSMORE2_INTS) {
-				quithere(1, "CMR2 Interface count (%d) isn't expected: %d",
-						found->intinfo_count,
-						CAIRNSMORE2_INTS);
-			}
-			info->timeout = BMSC_CMR2_TIMEOUT;
-			cmr2_count = 0;
-			for (i = 0; i < CAIRNSMORE2_INTS; i++)
-				cmr2_ok[i] = false;
 			break;
 		default:
 			quit(1, "%s bmsc_detect_one() invalid %s ident=%d",
@@ -833,10 +707,10 @@ cmr2_retry:
 				rdreg_buf[2] = 0x04;  //8-15
 				rdreg_buf[3] = CRC5(rdreg_buf, 27);
 
-				applog(LOG_ERR, "-----------------start freq-------------------");
+				applog(LOG_DEBUG, "-----------------start freq-------------------");
 				cgsleep_ms(500);
 
-				applog(LOG_ERR, "Send frequency %02x%02x%02x%02x", cmd_buf[0], cmd_buf[1], cmd_buf[2], cmd_buf[3]);
+				applog(LOG_DEBUG, "Send frequency %02x%02x%02x%02x", cmd_buf[0], cmd_buf[1], cmd_buf[2], cmd_buf[3]);
 				err = usb_write_ii(bmsc, info->intinfo, (char * )cmd_buf, 4, &amount, C_SENDWORK);
 				if (err != LIBUSB_SUCCESS || amount != 4) {
 					applog(LOG_ERR, "%s%i: Write freq Comms error (werr=%d amount=%d)", bmsc->drv->name, bmsc->device_id, err, amount);
@@ -846,7 +720,7 @@ cmr2_retry:
 
 				cgsleep_ms(500);
 
-				applog(LOG_ERR, "Send freq getstatus %02x%02x%02x%02x", rdreg_buf[0], rdreg_buf[1], rdreg_buf[2], rdreg_buf[3]);
+				applog(LOG_DEBUG, "Send freq getstatus %02x%02x%02x%02x", rdreg_buf[0], rdreg_buf[1], rdreg_buf[2], rdreg_buf[3]);
 
 				for(i = 0; i < 10; i++) {
 					usb_read_ii_timeout_cancellable(bmsc, info->intinfo, (char * )rebuf, BMSC_READ_SIZE, &relen, 100, C_GETRESULTS);
@@ -875,7 +749,7 @@ cmr2_retry:
 							if (realllen <= 0) {
 								if (sendfreqstatus) {
 									sendfreqstatus = 0;
-									applog(LOG_ERR, "Send freq getstatus %02x%02x%02x%02x", rdreg_buf[0], rdreg_buf[1], rdreg_buf[2], rdreg_buf[3]);
+									applog(LOG_DEBUG, "Send freq getstatus %02x%02x%02x%02x", rdreg_buf[0], rdreg_buf[1], rdreg_buf[2], rdreg_buf[3]);
 									usb_read_ii_timeout_cancellable(bmsc, info->intinfo, (char * )rebuf, BMSC_READ_SIZE, &relen, 200, C_GETRESULTS);
 									err = usb_write_ii(bmsc, info->intinfo, (char * )rdreg_buf, 4, &amount, C_SENDWORK);
 									if (err != LIBUSB_SUCCESS || amount != 4) {
@@ -884,15 +758,15 @@ cmr2_retry:
 									}
 									applog(LOG_DEBUG, "Send freq getstatus ok");
 								} else {
-									applog(LOG_ERR, "------recv freq getstatus no data finish------");
+									applog(LOG_DEBUG, "------recv freq getstatus no data finish------");
 									break;
 								}
 							} else {
 								applog(LOG_DEBUG, "Recv freq getstatus len=%d", realllen);
 								for (i = 0; i < realllen; i += 5) {
-									applog(LOG_ERR, "Recv %d freq getstatus=%02x%02x%02x%02x%02x", i / 5 + 1, rebuf[i], rebuf[i + 1], rebuf[i + 2], rebuf[i + 3], rebuf[i + 4]);
+									applog(LOG_DEBUG, "Recv %d freq getstatus=%02x%02x%02x%02x%02x", i / 5 + 1, rebuf[i], rebuf[i + 1], rebuf[i + 2], rebuf[i + 3], rebuf[i + 4]);
 								}
-								applog(LOG_ERR, "--------recv freq getstatus ok finish---------");
+								applog(LOG_DEBUG, "--------recv freq getstatus ok finish---------");
 								break;
 							}
 						}
@@ -975,8 +849,8 @@ cmr2_retry:
 
 		cgsleep_ms(500);
 
-		applog(LOG_ERR, "-----------------start nonce------------------");
-		applog(LOG_ERR, "Bmsc send golden nonce");
+		applog(LOG_DEBUG, "-----------------start nonce------------------");
+		applog(LOG_DEBUG, "Bmsc send golden nonce");
 
 		err = usb_write_ii(bmsc, info->intinfo, (char *)(&workdata), sizeof(workdata), &amount, C_SENDWORK);
 		if (err != LIBUSB_SUCCESS || amount != sizeof(workdata))
@@ -985,7 +859,7 @@ cmr2_retry:
 		memset(nonce_bin, 0, sizeof(nonce_bin));
 		ret = bmsc_get_nonce(bmsc, nonce_bin, &tv_start, &tv_finish, NULL, 100);
 		if (ret != BTM_NONCE_OK) {
-			applog(LOG_ERR, "Bmsc recv golden nonce timeout");
+			applog(LOG_DEBUG, "Bmsc recv golden nonce timeout");
 			continue;
 		}
 
@@ -1002,49 +876,13 @@ cmr2_retry:
 	}
 
 	if (!ok) {
-		if (info->ident != IDENT_CMR2)
-			goto unshin;
-
-		if (info->intinfo < CAIRNSMORE2_INTS-1) {
-			info->intinfo++;
-			goto cmr2_retry;
-		}
-	} else {
-		if (info->ident == IDENT_CMR2) {
-			applog(LOG_DEBUG,
-				"Bmsc Detect: "
-				"Test succeeded at %s i%d: got %s",
-					bmsc->device_path, info->intinfo, golden_nonce);
-
-			cmr2_ok[info->intinfo] = true;
-			cmr2_count++;
-			if (info->intinfo < CAIRNSMORE2_INTS-1) {
-				info->intinfo++;
-				goto cmr2_retry;
-			}
-		}
+		goto unshin;
 	}
 
-	if (info->ident == IDENT_CMR2) {
-		if (cmr2_count == 0) {
-			applog(LOG_ERR,
-				"Bmsc Detect: Test failed at %s: for all %d CMR2 Interfaces",
-				bmsc->device_path, CAIRNSMORE2_INTS);
-			goto unshin;
-		}
-
-		// set the interface to the first one that succeeded
-		for (i = 0; i < CAIRNSMORE2_INTS; i++)
-			if (cmr2_ok[i]) {
-				info->intinfo = i;
-				break;
-			}
-	} else {
-		applog(LOG_DEBUG,
-			"Bmsc Detect: "
-			"Test succeeded at %s: got %s",
-				bmsc->device_path, golden_nonce);
-	}
+	applog(LOG_DEBUG,
+		"Bmsc Detect: "
+		"Test succeeded at %s: got %s",
+			bmsc->device_path, golden_nonce);
 
 	/* We have a real Bmsc! */
 	if (!add_cgpu(bmsc))
@@ -1054,18 +892,6 @@ cmr2_retry:
 
 	applog(LOG_INFO, "%s%d: Found at %s",
 		bmsc->drv->name, bmsc->device_id, bmsc->device_path);
-
-	if (info->ident == IDENT_CMR2) {
-		applog(LOG_INFO, "%s%d: with %d Interface%s",
-				bmsc->drv->name, bmsc->device_id,
-				cmr2_count, cmr2_count > 1 ? "s" : "");
-
-		// Assume 1 or 2 are running FPGA pairs
-		if (cmr2_count < 3) {
-			work_division = fpga_count = 2;
-			info->Hs /= 2;
-		}
-	}
 
 	applog(LOG_DEBUG, "%s%d: Init baud=%d work_division=%d fpga_count=%d readtimeout=%d",
 		bmsc->drv->name, bmsc->device_id, baud, work_division, fpga_count, readtimeout);
@@ -1079,47 +905,6 @@ cmr2_retry:
 	timersub(&tv_finish, &tv_start, &(info->golden_tv));
 
 	set_timing_mode(this_option_offset, bmsc, readtimeout);
-
-	if (info->ident == IDENT_CMR2) {
-		int i;
-		for (i = info->intinfo + 1; i < bmsc->usbdev->found->intinfo_count; i++) {
-			struct cgpu_info *cgtmp;
-			struct BMSC_INFO *intmp;
-
-			if (!cmr2_ok[i])
-				continue;
-
-			cgtmp = usb_copy_cgpu(bmsc);
-			if (!cgtmp) {
-				applog(LOG_ERR, "%s%d: Init failed initinfo %d",
-						bmsc->drv->name, bmsc->device_id, i);
-				continue;
-			}
-
-			cgtmp->usbinfo.usbstat = USB_NOSTAT;
-
-			intmp = (struct BMSC_INFO *)malloc(sizeof(struct BMSC_INFO));
-			if (unlikely(!intmp))
-				quit(1, "Failed2 to malloc BMSC_INFO");
-
-			cgtmp->device_data = (void *)intmp;
-
-			// Initialise everything to match
-			memcpy(intmp, info, sizeof(struct BMSC_INFO));
-
-			intmp->intinfo = i;
-
-			bmsc_initialise(cgtmp, baud);
-
-			if (!add_cgpu(cgtmp)) {
-				usb_uninit(cgtmp);
-				free(intmp);
-				continue;
-			}
-
-			update_usb_stats(cgtmp);
-		}
-	}
 
 	return bmsc;
 
@@ -1270,7 +1055,7 @@ static int64_t bmsc_scanwork(struct thr_info *thr)
 		applog(LOG_DEBUG, "%s%d: no nonce = 0x%08lX hashes (%ld.%06lds)",
 				bmsc->drv->name, bmsc->device_id,
 				(long unsigned int)estimate_hashes,
-				elapsed.tv_sec, (long int)elapsed.tv_usec);
+				elapsed.tv_sec, elapsed.tv_usec);
 
 		hash_count = 0;
 		goto out;
@@ -1294,7 +1079,7 @@ static int64_t bmsc_scanwork(struct thr_info *thr)
 	applog(LOG_DEBUG, "%s%d: nonce = 0x%08x = 0x%08lX hashes (%ld.%06lds)",
 			bmsc->drv->name, bmsc->device_id,
 			nonce, (long unsigned int)hash_count,
-			elapsed.tv_sec, (long int)elapsed.tv_usec);
+			elapsed.tv_sec, elapsed.tv_usec);
 
 out:
 	free_work(work);
@@ -1584,10 +1369,7 @@ static void bmsc_statline_before(char *buf, size_t bufsiz, struct cgpu_info *cgp
 {
 	struct BMSC_INFO *info = (struct BMSC_INFO *)(cgpu->device_data);
 
-	if (info->ident == IDENT_CMR2 && info->cmr2_speed > 0)
-		tailsprintf(buf, bufsiz, "%5.1fMhz", (float)(info->cmr2_speed) * BMSC_CMR2_SPEED_FACTOR);
-	else
-		tailsprintf(buf, bufsiz, "       ");
+	tailsprintf(buf, bufsiz, "       ");
 
 	tailsprintf(buf, bufsiz, "        | ");
 }
@@ -1601,47 +1383,11 @@ static void bmsc_identify(struct cgpu_info *cgpu)
 {
 	struct BMSC_INFO *info = (struct BMSC_INFO *)(cgpu->device_data);
 
-	if (info->ident == IDENT_CMR2)
-		info->flash_next_work = true;
 }
 
 static char *bmsc_set(struct cgpu_info *cgpu, char *option, char *setting, char *replybuf)
 {
-	struct BMSC_INFO *info = (struct BMSC_INFO *)(cgpu->device_data);
-	int val;
-
-	if (info->ident != IDENT_CMR2) {
-		strcpy(replybuf, "no set options available");
-		return replybuf;
-	}
-
-	if (strcasecmp(option, "help") == 0) {
-		sprintf(replybuf, "clock: range %d-%d",
-				  BMSC_CMR2_SPEED_MIN_INT, BMSC_CMR2_SPEED_MAX_INT);
-		return replybuf;
-	}
-
-	if (strcasecmp(option, "clock") == 0) {
-		if (!setting || !*setting) {
-			sprintf(replybuf, "missing clock setting");
-			return replybuf;
-		}
-
-		val = atoi(setting);
-		if (val < BMSC_CMR2_SPEED_MIN_INT || val > BMSC_CMR2_SPEED_MAX_INT) {
-			sprintf(replybuf, "invalid clock: '%s' valid range %d-%d",
-					  setting,
-					  BMSC_CMR2_SPEED_MIN_INT,
-					  BMSC_CMR2_SPEED_MAX_INT);
-		}
-
-		info->cmr2_speed = CMR2_INT_TO_SPEED(val);
-		info->speed_next_work = true;
-
-		return NULL;
-	}
-
-	sprintf(replybuf, "Unknown option: %s", option);
+	strcpy(replybuf, "no set options available");
 	return replybuf;
 }
 

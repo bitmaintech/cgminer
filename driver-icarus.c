@@ -415,6 +415,13 @@ static void icarus_initialise(struct cgpu_info *icarus, int baud)
 				 interface, C_VENDOR);
 			break;
 		case IDENT_AMU:
+			// Reset the UART
+			transfer(icarus, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_RESET, 0,
+				 interface, C_RESET_UART);
+
+			if (icarus->usbinfo.nodev)
+				return;
+
 			// Enable the UART
 			transfer(icarus, CP210X_TYPE_OUT, CP210X_REQUEST_IFC_ENABLE,
 				 CP210X_VALUE_UART_ENABLE,
@@ -480,7 +487,10 @@ static int icarus_get_nonce(struct cgpu_info *icarus, unsigned char *buf, struct
 		return ICA_NONCE_ERROR;
 	}
 
-	if (amt >= ICARUS_READ_SIZE)
+	if (amt > ICARUS_READ_SIZE)
+		return ICA_NONCE_ERROR;
+
+	if (amt == ICARUS_READ_SIZE)
 		return ICA_NONCE_OK;
 
 	rc = SECTOMS(tdiff(tv_finish, tv_start));
@@ -1163,7 +1173,7 @@ static int64_t icarus_scanwork(struct thr_info *thr)
 		goto out;
 	}
 
-	memcpy((char *)&nonce, nonce_bin, sizeof(nonce_bin));
+	memcpy((char *)&nonce, nonce_bin, sizeof(nonce));
 	nonce = htobe32(nonce);
 	curr_hw_errors = icarus->hw_errors;
 	submit_nonce(thr, work, nonce);
