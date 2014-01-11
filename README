@@ -223,6 +223,8 @@ ASIC only options:
 --bitburner-fury-options <arg> Override avalon-options for BitBurner Fury boards baud:miners:asic:timeout:freq
 --bitburner-fury-voltage <arg> Set BitBurner Fury core voltage, in millivolts
 --bitburner-voltage <arg> Set BitBurner (Avalon) core voltage, in millivolts
+--bmsc-options <arg> Set Antminer U1 options baud:timeout
+--bmsc-freq <arg> Set Antminer U1 freq
 --drillbit-options <arg> Set drillbit options <int|ext>:clock[:clock_divider][:voltage]
 --klondike-options <arg> Set klondike options clock:temptarget
 
@@ -300,6 +302,18 @@ modem and the driver needs to be unloaded for cgminer to work:
 sudo kextunload -b com.apple.driver.AppleUSBCDC
 sudo kextunload -b com.apple.driver.AppleUSBCDCACMData
 
+Some devices need superuser access to mine on them so cgminer may need to
+be started with sudo
+i.e.:
+sudo cgminer <insert commands here>
+
+If when adding additional USB devices, you get a "SEM: %s USB timeout waiting..."
+error, this could be due to an insufficient number of SysV Semaphore UNDO
+structures (kern.sysv.semume). Some systems have this value set at 10 (or
+less). To resolve, use sysctl to increase that value to something more
+reasonable. If any semaphores have already been used, the system may
+not allow you to change it post-boot, so you will need to use /etc/sysctl.conf
+to update it at boot-time and reboot.
 
 ---
 

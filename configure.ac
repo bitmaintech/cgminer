@@ -1,7 +1,7 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [3])
-m4_define([v_min], [9])
+m4_define([v_min], [10])
 m4_define([v_mic], [0])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_ver], [v_maj.v_min.v_mic])
@@ -148,10 +148,10 @@ if test "x$bab" = xyes; then
 fi
 AM_CONDITIONAL([HAS_BAB], [test x$bab = xyes])
 
-bflsc="yes"
+bflsc="no"
 
 AC_ARG_ENABLE([bflsc],
-	[AC_HELP_STRING([--enable-bflsc],[Compile support for BFL ASICs (default enabled)])],
+	[AC_HELP_STRING([--enable-bflsc],[Compile support for BFL ASICs (default disabled)])],
 	[bflsc=$enableval]
 	)
 if test "x$bflsc" = xyes; then
@@ -299,8 +299,15 @@ else
 	want_usbutils=false
 fi
 
+if test x$bab$bitfury != xnono; then
+	want_libbitfury = true
+else
+	want_libbitfury = false
+fi
+
 AM_CONDITIONAL([NEED_FPGAUTILS], [test x$modminer != xno])
 AM_CONDITIONAL([WANT_USBUTILS], [test x$want_usbutils != xfalse])
+AM_CONDITIONAL([WANT_LIBBITFURY], [test x$want_libbitfury != xfalse])
 AM_CONDITIONAL([HAVE_CURSES], [test x$curses = xyes])
 AM_CONDITIONAL([HAVE_WINDOWS], [test x$have_win32 = xtrue])
 AM_CONDITIONAL([HAVE_x86_64], [test x$have_x86_64 = xtrue])

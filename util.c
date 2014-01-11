@@ -27,7 +27,6 @@
 #include <fcntl.h>
 # ifdef __linux
 #  include <sys/prctl.h>
-#  include <execinfo.h>
 # endif
 # include <sys/socket.h>
 # include <netinet/in.h>
@@ -44,7 +43,6 @@
 #include "elist.h"
 #include "compat.h"
 #include "util.h"
-
 
 #define DEFAULT_SOCKWAIT 60
 
@@ -2599,8 +2597,7 @@ int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, co
 	}
 	if (likely(!ret))
 		return ETIMEDOUT;
-
-	quitfrom(1, file, func, line, "Failed to sem_timedwait errno=%d cgsem=0x%p fd %d", errno, cgsem, fd);
+	quitfrom(1, file, func, line, "Failed to sem_timedwait errno=%d cgsem=0x%p", errno, cgsem);
 	/* We don't reach here */
 	return 0;
 }
@@ -2643,18 +2640,6 @@ void _cgsem_wait(cgsem_t *cgsem, const char *file, const char *func, const int l
 		quitfrom(1, file, func, line, "Failed to sem_wait errno=%d cgsem=0x%p", errno, cgsem);
 }
 
-static void _cgsem_stackdump( void )
-{
-# ifdef __linux
-       #define SIZE 100
-       int nptrs;
-       void *buffer[SIZE];
-
-       nptrs = backtrace(buffer, SIZE);
-       backtrace_symbols_fd(buffer, nptrs, STDERR_FILENO);
-#endif
-}
-
 int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, const int line)
 {
 	struct timespec abs_timeout, ts_now;
@@ -2668,11 +2653,8 @@ int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, co
 	ret = sem_timedwait(cgsem, &abs_timeout);
 
 	if (ret) {
-		if (likely(sock_timeout())) {
+		if (likely(sock_timeout()))
 			return ETIMEDOUT;
-		}
-
-		_cgsem_stackdump( );
 		quitfrom(1, file, func, line, "Failed to sem_timedwait errno=%d cgsem=0x%p", errno, cgsem);
 	}
 	return 0;
