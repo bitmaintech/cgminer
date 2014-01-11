@@ -3548,6 +3548,14 @@ fail:
 		}
 	}
 
+/*
+ * Some OS's have a default of only *10* UNDO structs, or less!
+ * If this is you, you will see the "SEM: %s USB timeout waiting..."
+ * error when adding additional USB miners.
+ * To fix, use sysctl to increase kern.sysv.semume to something
+ * more sane. You may need to do this in /etc/sysctl.conf and
+ * reboot.
+ */
 	struct sembuf sops[] = {
 		{ 0, 0, IPC_NOWAIT | SEM_UNDO },
 		{ 0, 1, IPC_NOWAIT | SEM_UNDO }
