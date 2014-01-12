@@ -1,8 +1,4 @@
 This is a multi-threaded multi-pool FPGA and ASIC miner for bitcoin.
-This also supports GPU mining with ATI GPU monitoring, (over)clocking
-and fanspeed support for bitcoin and derivative coins. Do not use on
-multiple block chains at the same time!
-
 
 This code is provided entirely free of charge by the programmer in his spare
 time so donations would be greatly appreciated. Please consider donating to the
@@ -13,10 +9,11 @@ Con Kolivas <kernel@kolivas.org>
 
 DOWNLOADS:
 
-NULL
+http://ck.kolivas.org/apps/cgminer
+
 GIT TREE:
 
-https://github.com/jimjag/cgminer
+https://github.com/ckolivas/cgminer
 
 Support thread:
 
@@ -28,8 +25,7 @@ irc://irc.freenode.net/cgminer
 
 License: GPLv3.  See COPYING for details.
 
-SEE ALSO API-README, ASIC-README, FGPA-README, GPU-README AND SCRYPT-README FOR
-MORE INFORMATION ON EACH.
+SEE ALSO API-README, ASIC-README and FGPA-README FOR MORE INFORMATION ON EACH.
 
 ---
 
@@ -94,13 +90,6 @@ Optional:
 	curses dev library
 	(libncurses5-dev or libpdcurses on WIN32 for text user interface)
 
-	AMD APP SDK		http://developer.amd.com/sdks/AMDAPPSDK
-	(This sdk is mandatory for GPU mining)
-
-	AMD ADL SDK		http://developer.amd.com/sdks/ADLSDK
-	(This sdk is mandatory for ATI GPU monitoring & clocking)
-
-
 	libudev dev library (libudev-dev)
 	(This is only required for USB device support and is linux only)
 
@@ -129,10 +118,6 @@ CGMiner specific configuration options:
   --without-curses        Compile support for curses TUI (default enabled)
   --with-system-libusb    Compile against dynamic system libusb (default use
                           included static libusb)
-  --enable-opencl         Enable support for GPU mining with opencl
-  --disable-adl           Override detection and disable building with adl
-  --enable-scrypt         Compile support for scrypt litecoin mining (default
-                          disabled)
 
 Basic *nix build instructions:
 	To actually build:
@@ -251,42 +236,6 @@ FPGA only options:
 --bfl-range         Use nonce range on bitforce devices if supported
 
 See FGPA-README for more information regarding this.
-
-GPU only options:
-
---auto-fan          Automatically adjust all GPU fan speeds to maintain a target temperature
---auto-gpu          Automatically adjust all GPU engine clock speeds to maintain a target temperature
---disable-gpu|-G    Disable GPU mining even if suitable devices exist
---gpu-threads|-g <arg> Number of threads per GPU (1 - 10) (default: 2)
---gpu-dyninterval <arg> Set the refresh interval in ms for GPUs using dynamic intensity (default: 7)
---gpu-engine <arg>  GPU engine (over)clock range in Mhz - one value, range and/or comma separated list (e.g. 850-900,900,750-850)
---gpu-fan <arg>     GPU fan percentage range - one value, range and/or comma separated list (e.g. 25-85,85,65)
---gpu-map <arg>     Map OpenCL to ADL device order manually, paired CSV (e.g. 1:0,2:1 maps OpenCL 1 to ADL 0, 2 to 1)
---gpu-memclock <arg> Set the GPU memory (over)clock in Mhz - one value for all or separate by commas for per card.
---gpu-memdiff <arg> Set a fixed difference in clock speed between the GPU and memory in auto-gpu mode
---gpu-powertune <arg> Set the GPU powertune percentage - one value for all or separate by commas for per card.
---gpu-reorder       Attempt to reorder GPU devices according to PCI Bus ID
---gpu-vddc <arg>    Set the GPU voltage in Volts - one value for all or separate by commas for per card.
---intensity|-I <arg> Intensity of GPU scanning (d or -10 -> 10, default: d to maintain desktop interactivity)
---kernel|-k <arg>   Override kernel to use (diablo, poclbm, phatk or diakgcn) - one value or comma separated
---ndevs|-n          Enumerate number of detected GPUs and exit
---no-restart        Do not attempt to restart GPUs that hang
---temp-hysteresis <arg> Set how much the temperature can fluctuate outside limits when automanaging speeds (default: 3)
---temp-overheat <arg> Overheat temperature when automatically managing fan and GPU speeds (default: 85)
---temp-target <arg> Target temperature when automatically managing fan and GPU speeds (default: 75)
---vectors|-v <arg>  Override detected optimal vector (1, 2 or 4) - one value or comma separated list
---worksize|-w <arg> Override detected optimal worksize - one value or comma separated list
-
-See GPU-README for more information regarding GPU mining.
-
-
-SCRYPT only options:
-
---lookup-gap <arg>  Set GPU lookup gap for scrypt mining, comma separated
---shaders <arg>     GPU shaders per card for tuning scrypt, comma separated
---thread-concurrency <arg> Set GPU thread concurrency for scrypt mining, comma separated
-
-See SCRYPT-README for more information regarding litecoin mining.
 
 
 Cgminer should automatically find all of your Avalon ASIC, BFL ASIC, BitForce
@@ -465,22 +414,6 @@ co[M]pact: off
 
 Q quits the application.
 
-G gives you something like:
-
-GPU 0: [124.2 / 191.3 Mh/s] [A:77  R:33  HW:0  U:1.73/m  WU 1.73/m]
-Temp: 67.0 C
-Fan Speed: 35% (2500 RPM)
-Engine Clock: 960 MHz
-Memory Clock: 480 Mhz
-Vddc: 1.200 V
-Activity: 93%
-Powertune: 0%
-Last initialised: [2011-09-06 12:03:56]
-Thread 0: 62.4 Mh/s Enabled ALIVE
-Thread 1: 60.2 Mh/s Enabled ALIVE
-
-[E]nable [D]isable [R]estart GPU [C]hange settings
-Or press any other key to continue
 
 The running log shows output like this:
 
