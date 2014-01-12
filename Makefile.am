@@ -43,6 +43,23 @@ cgminer_SOURCES	+= elist.h miner.h compat.h bench_block.h	\
 
 cgminer_SOURCES	+= logging.c
 
+if HAS_OPENCL
+bin_SCRIPTS	= $(top_srcdir)/*.cl
+
+cgminer_SOURCES += driver-opencl.h driver-opencl.c
+cgminer_SOURCES += ocl.c ocl.h
+cgminer_SOURCES += adl.c adl.h adl_functions.h
+cgminer_SOURCES += *.cl
+cgminer_LDADD += @OPENCL_LIBS@
+cgminer_CPPFLAGS += @OPENCL_FLAGS@
+cgminer_CPPFLAGS += $(ADL_CPPFLAGS)
+
+if HAS_SCRYPT
+cgminer_SOURCES += scrypt.c scrypt.h
+endif
+
+endif
+
 if NEED_FPGAUTILS
 cgminer_SOURCES += fpgautils.c fpgautils.h
 endif
