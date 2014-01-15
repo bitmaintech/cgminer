@@ -1394,7 +1394,7 @@ static char *bmsc_set(struct cgpu_info *cgpu, char *option, char *setting, char 
 struct device_drv bmsc_drv = {
 	.drv_id = DRIVER_bmsc,
 	.dname = "Bitmain",
-	.name = "BTM",
+	.name = "ANT",
 	.drv_detect = bmsc_detect,
 	.hash_work = &hash_driver_work,
 	.get_api_stats = bmsc_api_stats,

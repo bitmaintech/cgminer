@@ -3206,6 +3206,7 @@ void usb_cleanup(void)
 			case DRIVER_avalon:
 			case DRIVER_klondike:
 			case DRIVER_hashfast:
+			case DRIVER_bmsc:
 				DEVWLOCK(cgpu, pstate);
 				release_cgpu(cgpu);
 				DEVWUNLOCK(cgpu, pstate);

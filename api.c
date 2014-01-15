@@ -25,7 +25,7 @@
 #include "miner.h"
 #include "util.h"
 
-#if defined(USE_BFLSC) || defined(USE_AVALON) || defined(USE_HASHFAST) || defined(USE_BITFURY) || defined(USE_KLONDIKE) || defined(USE_KNC) || defined(USE_BAB) || defined(USE_DRILLBIT) || defined(USE_MINION)
+#if defined(USE_BFLSC) || defined(USE_AVALON) || defined(USE_HASHFAST) || defined(USE_BITFURY) || defined(USE_KLONDIKE) || defined(USE_KNC) || defined(USE_BAB) || defined(USE_DRILLBIT) || defined(USE_MINION)  || defined(USE_BMSC)
 #define HAVE_AN_ASIC 1
 #endif
 
@@ -188,6 +188,9 @@ static const char *DEVICECODE = ""
 #endif
 #ifdef USE_MODMINER
 			"MMQ "
+#endif
+#ifdef USE_BMSC
+			"ANT "
 #endif
 			"";
 

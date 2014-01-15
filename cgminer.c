@@ -84,7 +84,7 @@ bool opt_hfa_pll_bypass;
 bool opt_hfa_dfu_boot;
 #endif
 
-#if defined(USE_BITFORCE) || defined(USE_ICARUS) || defined(USE_AVALON) || defined(USE_BMSC) || defined(USE_MODMINER)
+#if defined(USE_BITFORCE) || defined(USE_ICARUS) || defined(USE_AVALON) || defined(USE_MODMINER)
 #	define USE_FPGA
 #endif
 
