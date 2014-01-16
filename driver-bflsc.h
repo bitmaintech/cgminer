@@ -311,12 +311,12 @@ struct SaveString {
 // Default expected time for a nonce range
 // - thus no need to check until this + last time work was found
 // 60GH/s MiniRig (1 board) or Single
-#define BAM_WORK_TIME 71.58
-#define BAS_WORK_TIME 71.58
+#define BAM_WORK_TIME 71 /* 71.58 */
+#define BAS_WORK_TIME 71 /* 71.58 */
 // 30GH/s Little Single
-#define BAL_WORK_TIME 143.17
+#define BAL_WORK_TIME 143 /*143.17 */
 // 4.5GH/s Jalapeno
-#define BAJ_WORK_TIME 954.44
+#define BAJ_WORK_TIME 954 /* 954.44 */
 
 // Defaults (slightly over half the work time) but ensure none are above 100
 // SCAN_TIME - delay after sending work
