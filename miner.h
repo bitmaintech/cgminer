@@ -661,6 +661,7 @@ endian_flip128(void __maybe_unused *dest_p, const void __maybe_unused *src_p)
 }
 #endif
 
+extern double cgpu_runtime(struct cgpu_info *cgpu);
 extern void _quit(int status);
 
 /*
@@ -946,6 +947,7 @@ extern int opt_api_port;
 extern bool opt_api_listen;
 extern bool opt_api_network;
 extern bool opt_delaynet;
+extern time_t last_getwork;
 extern bool opt_restart;
 extern char *opt_icarus_options;
 extern char *opt_icarus_timing;
@@ -1019,6 +1021,7 @@ extern pthread_mutex_t restart_lock;
 extern pthread_cond_t restart_cond;
 
 extern void clear_stratum_shares(struct pool *pool);
+extern void clear_pool_work(struct pool *pool);
 extern void set_target(unsigned char *dest_target, double diff);
 extern int restart_wait(struct thr_info *thr, unsigned int mstime);
 
@@ -1345,7 +1348,7 @@ extern void get_datestamp(char *, size_t, struct timeval *);
 extern void inc_hw_errors(struct thr_info *thr);
 extern bool test_nonce(struct work *work, uint32_t nonce);
 extern bool test_nonce_diff(struct work *work, uint32_t nonce, double diff);
-extern void submit_tested_work(struct thr_info *thr, struct work *work);
+extern bool submit_tested_work(struct thr_info *thr, struct work *work);
 extern bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce);
 extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce,
 			  int noffset);
@@ -1419,7 +1422,8 @@ enum api_data_type {
 	API_VOLTS,
 	API_HS,
 	API_DIFF,
-	API_PERCENT
+	API_PERCENT,
+	API_AVG
 };
 
 struct api_data {
@@ -1454,5 +1458,6 @@ extern struct api_data *api_add_volts(struct api_data *root, char *name, float *
 extern struct api_data *api_add_hs(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_diff(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_percent(struct api_data *root, char *name, double *data, bool copy_data);
+extern struct api_data *api_add_avg(struct api_data *root, char *name, float *data, bool copy_data);
 
 #endif /* __MINER_H__ */

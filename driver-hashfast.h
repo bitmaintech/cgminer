@@ -18,10 +18,13 @@
 
 int opt_hfa_ntime_roll;
 int opt_hfa_hash_clock;
+int opt_hfa_overheat;
 bool opt_hfa_pll_bypass;
 bool opt_hfa_dfu_boot;
 
 #define HASHFAST_MINER_THREADS 1
+#define HFA_CLOCK_DEFAULT 550
+#define HFA_OVERHEAT_DEFAULT 85
 
 // Matching fields for hf_statistics, but large #s for local accumulation, per-die
 struct hf_long_statistics {
@@ -94,8 +97,12 @@ struct hashfast_info {
 	uint16_t device_sequence_head;              // DEVICE: The most recent sequence number the device dispatched
 	uint16_t device_sequence_tail;              // DEVICE: The most recently completed job in the device
 	int64_t hash_count;
+	uint64_t raw_hashes;
+	uint64_t calc_hashes;
 	uint16_t shed_count;                        // Dynamic copy of #cores device has shed for thermal control
 	int no_matching_work;
+	int resets;
+	int overheat;
 
 	pthread_t read_thr;
 };

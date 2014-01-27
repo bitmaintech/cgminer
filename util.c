@@ -1665,8 +1665,18 @@ static bool parse_diff(struct pool *pool, json_t *val)
 	return true;
 }
 
+static void __suspend_stratum(struct pool *pool)
+{
+	clear_sockbuf(pool);
+	pool->stratum_active = pool->stratum_notify = false;
+	if (pool->sock)
+		CLOSESOCKET(pool->sock);
+	pool->sock = 0;
+}
+
 static bool parse_reconnect(struct pool *pool, json_t *val)
 {
+	char *sockaddr_url, *stratum_port, *tmp;
 	char *url, *port, address[256];
 
 	memset(address, 0, 255);
@@ -1680,12 +1690,23 @@ static bool parse_reconnect(struct pool *pool, json_t *val)
 
 	sprintf(address, "%s:%s", url, port);
 
-	if (!extract_sockaddr(address, &pool->sockaddr_url, &pool->stratum_port))
+	if (!extract_sockaddr(address, &sockaddr_url, &stratum_port))
 		return false;
 
-	pool->stratum_url = pool->sockaddr_url;
-
 	applog(LOG_NOTICE, "Reconnect requested from pool %d to %s", pool->pool_no, address);
+
+	clear_pool_work(pool);
+
+	mutex_lock(&pool->stratum_lock);
+	__suspend_stratum(pool);
+	tmp = pool->sockaddr_url;
+	pool->sockaddr_url = sockaddr_url;
+	pool->stratum_url = pool->sockaddr_url;
+	free(tmp);
+	tmp = pool->stratum_port;
+	pool->stratum_port = stratum_port;
+	free(tmp);
+	mutex_unlock(&pool->stratum_lock);
 
 	if (!restart_stratum(pool))
 		return false;
@@ -2261,14 +2282,10 @@ out:
 
 void suspend_stratum(struct pool *pool)
 {
-	clear_sockbuf(pool);
 	applog(LOG_INFO, "Closing socket for stratum pool %d", pool->pool_no);
 
 	mutex_lock(&pool->stratum_lock);
-	pool->stratum_active = pool->stratum_notify = false;
-	if (pool->sock)
-		CLOSESOCKET(pool->sock);
-	pool->sock = 0;
+	__suspend_stratum(pool);
 	mutex_unlock(&pool->stratum_lock);
 }
 
@@ -2516,16 +2533,19 @@ void *str_text(char *ptr)
 
 void RenameThread(const char* name)
 {
+	char buf[16];
+
+	snprintf(buf, sizeof(buf), "cg@%s", name);
 #if defined(PR_SET_NAME)
 	// Only the first 15 characters are used (16 - NUL terminator)
-	prctl(PR_SET_NAME, name, 0, 0, 0);
+	prctl(PR_SET_NAME, buf, 0, 0, 0);
 #elif (defined(__FreeBSD__) || defined(__OpenBSD__))
-	pthread_set_name_np(pthread_self(), name);
+	pthread_set_name_np(pthread_self(), buf);
 #elif defined(MAC_OSX)
-	pthread_setname_np(name);
+	pthread_setname_np(buf);
 #else
-	// Prevent warnings for unused parameters...
-	(void)name;
+	// Prevent warnings
+	(void)buf;
 #endif
 }
 

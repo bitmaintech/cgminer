@@ -1,7 +1,7 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [3])
-m4_define([v_min], [10])
+m4_define([v_min], [11])
 m4_define([v_mic], [0])
 m4_define([v_var], [jj])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
@@ -252,7 +252,7 @@ AM_CONDITIONAL([HAS_KNC], [test x$knc = xyes])
 minion="no"
 
 AC_ARG_ENABLE([minion],
-	[AC_HELP_STRING([--enable-minion],[Compile support for BlackArrow Bitfury (default disabled)])],
+	[AC_HELP_STRING([--enable-minion],[Compile support for Minion BlackArrow ASIC (default disabled)])],
 	[minion=$enableval]
 	)
 if test "x$minion" = xyes; then
@@ -301,7 +301,7 @@ else
 	want_usbutils=false
 fi
 
-if test x$bab$bitfury != xnono; then
+if test x$bitfury != xno; then
 	want_libbitfury=true
 else
 	want_libbitfury=false
