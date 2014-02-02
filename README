@@ -4,20 +4,16 @@ This code is provided entirely free of charge by the programmer in his spare
 time so donations would be greatly appreciated. Please consider donating to the
 address below.
 
-ORIG:
-    Con Kolivas <kernel@kolivas.org>
-    15qSxP1SQcUX3o4nhkfdbgyoWEFMomJ4rZ
- 
-FORK:
-    Jim Jagielski <jimjag@gmail.com>
-    18X3CqCNSJsVzQEZFjWxeGNkmTqz6DHy1h
+Con Kolivas <kernel@kolivas.org>
+15qSxP1SQcUX3o4nhkfdbgyoWEFMomJ4rZ
 
 DOWNLOADS:
 
-NULL
+http://ck.kolivas.org/apps/cgminer
+
 GIT TREE:
 
-https://github.com/jimjag/cgminer
+https://github.com/ckolivas/cgminer
 
 Support thread:
 
@@ -111,7 +107,6 @@ CGMiner specific configuration options:
   --enable-bitforce       Compile support for BitForce FPGAs (default
                           disabled)
   --enable-bitfury        Compile support for BitFury ASICs (default disabled)
-  --enable-bmsc           Compile support for BitMain Antminer U1 (default disabled)
   --enable-hashfast       Compile support for Hashfast (default disabled)
   --enable-icarus         Compile support for Icarus (default disabled)
   --enable-knc            Compile support for KnC miners (default disabled)
@@ -223,12 +218,11 @@ ASIC only options:
 --avalon-cutoff <arg> Set avalon overheat cut off temperature (default: 60)
 --avalon-options <arg> Set avalon options baud:miners:asic:timeout:freq:tech
 --avalon-temp <arg> Set avalon target temperature (default: 50)
+--bab-options <arg> Set BaB options max:def:min:up:down:hz:delay:trf
 --bflsc-overheat <arg> Set overheat temperature where BFLSC devices throttle, 0 to disable (default: 90)
 --bitburner-fury-options <arg> Override avalon-options for BitBurner Fury boards baud:miners:asic:timeout:freq
 --bitburner-fury-voltage <arg> Set BitBurner Fury core voltage, in millivolts
 --bitburner-voltage <arg> Set BitBurner (Avalon) core voltage, in millivolts
---bmsc-options <arg> Set Antminer U1 options baud:timeout
---bmsc-freq <arg> Set Antminer U1 freq
 --drillbit-options <arg> Set drillbit options <int|ext>:clock[:clock_divider][:voltage]
 --klondike-options <arg> Set klondike options clock:temptarget
 
@@ -244,8 +238,8 @@ See FGPA-README for more information regarding this.
 
 Cgminer should automatically find all of your Avalon ASIC, BFL ASIC, BitForce
 FPGAs, Icarus bitstream FPGAs, Klondike ASIC, ASICMINER usb block erupters,
-KnC ASICs, BaB ASICs, Hashfast ASICs, ModMiner FPGAs, BPMC/BGMC BF1 USB ASICs
-and Bi*fury USB ASICs.
+KnC ASICs, BaB ASICs, Hashfast ASICs, ModMiner FPGAs, BPMC/BGMC BF1 USB ASICs,
+Bi*fury USB ASICs, Nanofury USB ASICs and Antminer U1 USB ASICs.
 
 ---
 
@@ -311,13 +305,7 @@ be started with sudo
 i.e.:
 sudo cgminer <insert commands here>
 
-If when adding additional USB devices, you get a "SEM: %s USB timeout waiting..."
-error, this could be due to an insufficient number of SysV Semaphore UNDO
-structures (kern.sysv.semume). Some systems have this value set at 10 (or
-less). To resolve, use sysctl to increase that value to something more
-reasonable. If any semaphores have already been used, the system may
-not allow you to change it post-boot, so you will need to use /etc/sysctl.conf
-to update it at boot-time and reboot.
+
 
 ---
 
@@ -647,7 +635,7 @@ config file and the file will be loaded one each startup.
 
 Q: The build fails with gcc is unable to build a binary.
 A: Remove the "-march=native" component of your CFLAGS as your version of gcc
-does not support it.
+does not support it. Also -O2 is capital o 2, not zero 2.
 
 Q: Can you implement feature X?
 A: I can, but time is limited, and people who donate are more likely to get
@@ -674,7 +662,9 @@ less of another, or can you change the quiet mode or can you add yet another
 output mode?
 A: Everyone will always have their own view of what's important to monitor.
 The defaults are very sane and I have very little interest in changing this
-any further.
+any further. There is far more detail in the API output than can be reasonably
+displayed on the small console window, and using an external interface such
+as miner.php is much more useful for setups with many devices.
 
 Q: What are the best parameters to pass for X pool/hardware/device.
 A: Virtually always, the DEFAULT parameters give the best results. Most user
@@ -725,9 +715,6 @@ been skipped.
 Q: What is an ASIC?
 A: They are Application Specify Integrated Circuit devices and provide the
 highest performance per unit power due to being dedicated to only one purpose.
-
-Q: Can I mine scrypt with FPGAs or ASICs?
-A: No.
 
 Q: What is stratum and how do I use it?
 A: Stratum is a protocol designed for pooled mining in such a way as to

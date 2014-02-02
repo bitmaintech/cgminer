@@ -86,10 +86,6 @@ if HAS_DRILLBIT
 cgminer_SOURCES += driver-drillbit.c driver-drillbit.h
 endif
 
-if HAS_BMSC
-cgminer_SOURCES += driver-bmsc.c
-endif
-
 if HAS_ICARUS
 cgminer_SOURCES += driver-icarus.c
 endif

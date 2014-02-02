@@ -240,7 +240,6 @@ static inline int fsync (int fd)
 	DRIVER_ADD_COMMAND(drillbit) \
 	DRIVER_ADD_COMMAND(bab) \
 	DRIVER_ADD_COMMAND(minion) \
-	DRIVER_ADD_COMMAND(bmsc) \
 	DRIVER_ADD_COMMAND(avalon)
 
 #define DRIVER_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
@@ -334,6 +333,9 @@ struct device_drv {
 	void (*hw_error)(struct thr_info *);
 	void (*thread_shutdown)(struct thr_info *);
 	void (*thread_enable)(struct thr_info *);
+
+	/* What should be zeroed in this device when global zero stats is sent */
+	void (*zero_stats)(struct cgpu_info *);
 
 	// Does it need to be free()d?
 	bool copy;
@@ -951,11 +953,6 @@ extern time_t last_getwork;
 extern bool opt_restart;
 extern char *opt_icarus_options;
 extern char *opt_icarus_timing;
-extern char *opt_bmsc_options;
-extern char *opt_bmsc_timing;
-extern char *opt_bmsc_freq;
-extern char *opt_bmsc_rdreg;
-extern bool opt_bmsc_rdworktest;
 extern bool opt_worktime;
 #ifdef USE_AVALON
 extern char *opt_avalon_options;
@@ -966,6 +963,9 @@ extern char *opt_klondike_options;
 #endif
 #ifdef USE_DRILLBIT
 extern char *opt_drillbit_options;
+#endif
+#ifdef USE_BAB
+extern char *opt_bab_options;
 #endif
 #ifdef USE_USBUTILS
 extern char *opt_usb_select;
@@ -1364,6 +1364,7 @@ extern void __work_completed(struct cgpu_info *cgpu, struct work *work);
 extern int age_queued_work(struct cgpu_info *cgpu, double secs);
 extern void work_completed(struct cgpu_info *cgpu, struct work *work);
 extern struct work *take_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
+extern void flush_queue(struct cgpu_info *cgpu);
 extern void hash_driver_work(struct thr_info *mythr);
 extern void hash_queued_work(struct thr_info *mythr);
 extern void _wlog(const char *str);
@@ -1408,6 +1409,7 @@ enum api_data_type {
 	API_INT,
 	API_UINT,
 	API_UINT32,
+	API_HEX32,
 	API_UINT64,
 	API_DOUBLE,
 	API_ELAPSED,
@@ -1443,6 +1445,7 @@ extern struct api_data *api_add_uint16(struct api_data *root, char *name, uint16
 extern struct api_data *api_add_int(struct api_data *root, char *name, int *data, bool copy_data);
 extern struct api_data *api_add_uint(struct api_data *root, char *name, unsigned int *data, bool copy_data);
 extern struct api_data *api_add_uint32(struct api_data *root, char *name, uint32_t *data, bool copy_data);
+extern struct api_data *api_add_hex32(struct api_data *root, char *name, uint32_t *data, bool copy_data);
 extern struct api_data *api_add_uint64(struct api_data *root, char *name, uint64_t *data, bool copy_data);
 extern struct api_data *api_add_double(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_elapsed(struct api_data *root, char *name, double *data, bool copy_data);

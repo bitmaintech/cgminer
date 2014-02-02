@@ -160,11 +160,6 @@ bool opt_disable_pool;
 static bool no_work;
 char *opt_icarus_options = NULL;
 char *opt_icarus_timing = NULL;
-char *opt_bmsc_options = "115200:20";
-char *opt_bmsc_timing = NULL;
-char *opt_bmsc_freq = "0781";
-char *opt_bmsc_rdreg = NULL;
-bool opt_bmsc_rdworktest = false;
 bool opt_worktime;
 #ifdef USE_AVALON
 char *opt_avalon_options = NULL;
@@ -176,6 +171,7 @@ char *opt_klondike_options = NULL;
 #ifdef USE_DRILLBIT
 char *opt_drillbit_options = NULL;
 #endif
+char *opt_bab_options = NULL;
 #ifdef USE_USBUTILS
 char *opt_usb_select = NULL;
 int opt_usbdump = -1;
@@ -1054,36 +1050,6 @@ static char *set_bitburner_fury_options(const char *arg)
 }
 #endif
 
-#ifdef USE_BMSC
-static char *set_bmsc_options(const char *arg)
-{
-	opt_set_charp(arg, &opt_bmsc_options);
-
-	return NULL;
-}
-
-static char *set_bmsc_timing(const char *arg)
-{
-	opt_set_charp(arg, &opt_bmsc_timing);
-
-	return NULL;
-}
-
-static char *set_bmsc_freq(const char *arg)
-{
-	opt_set_charp(arg, &opt_bmsc_freq);
-
-	return NULL;
-}
-
-static char *set_bmsc_rdreg(const char *arg)
-{
-	opt_set_charp(arg, &opt_bmsc_rdreg);
-
-	return NULL;
-}
-#endif
-
 #ifdef USE_KLONDIKE
 static char *set_klondike_options(const char *arg)
 {
@@ -1097,6 +1063,15 @@ static char *set_klondike_options(const char *arg)
 static char *set_drillbit_options(const char *arg)
 {
 	opt_set_charp(arg, &opt_drillbit_options);
+
+	return NULL;
+}
+#endif
+
+#ifdef USE_BAB
+static char *set_bab_options(const char *arg)
+{
+	opt_set_charp(arg, &opt_bab_options);
 
 	return NULL;
 }
@@ -1245,23 +1220,6 @@ static struct opt_table opt_config_table[] = {
 		     set_bitburner_fury_options, NULL, NULL,
 		     "Override avalon-options for BitBurner Fury boards baud:miners:asic:timeout:freq"),
 #endif
-#ifdef USE_BMSC
-	OPT_WITH_ARG("--bmsc-options",
-		     set_bmsc_options, NULL, NULL,
-		     opt_hidden),
-	OPT_WITH_ARG("--bmsc-timing",
-		     set_bmsc_timing, NULL, NULL,
-		     opt_hidden),
-	OPT_WITH_ARG("--bmsc-freq",
-		     set_bmsc_freq, NULL, NULL,
-		     opt_hidden),
-	OPT_WITH_ARG("--bmsc-rdreg",
-		     set_bmsc_rdreg, NULL, NULL,
-		     opt_hidden),
-	OPT_WITHOUT_ARG("--bmsc-rdworktest",
-		     opt_set_bool, &opt_bmsc_rdworktest,
-		     "Record work test data to file"),
-#endif
 #ifdef USE_HASHFAST
 	OPT_WITHOUT_ARG("--hfa-dfu-boot",
 			opt_set_bool, &opt_hfa_dfu_boot,
@@ -1278,6 +1236,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--hfa-temp-overheat",
 		     set_int_0_to_200, opt_show_intval, &opt_hfa_overheat,
 		     "Set the hashfast overheat throttling temperature"),
+	OPT_WITH_ARG("--hfa-temp-target",
+		     set_int_0_to_200, opt_show_intval, &opt_hfa_target,
+		     "Set the hashfast target temperature (0 to disable)"),
 #endif
 #ifdef USE_KLONDIKE
 	OPT_WITH_ARG("--klondike-options",
@@ -1288,6 +1249,11 @@ static struct opt_table opt_config_table[] = {
         OPT_WITH_ARG("--drillbit-options",
                      set_drillbit_options, NULL, NULL,
                      "Set drillbit options <int|ext>:clock[:clock_divider][:voltage]"),
+#endif
+#ifdef USE_BAB
+	OPT_WITH_ARG("--bab-options",
+		     set_bab_options, NULL, NULL,
+		     "Set bab options max:def:min:up:down:hz:delay:trf"),
 #endif
 	OPT_WITHOUT_ARG("--load-balance",
 		     set_loadbalance, &pool_strategy,
@@ -1586,9 +1552,6 @@ static char *opt_verusage_and_exit(const char *extra)
 #endif
 #ifdef USE_ICARUS
 		"icarus "
-#endif
-#ifdef USE_BMSC
-		"bmsc "
 #endif
 #ifdef USE_KLONDIKE
 		"klondike "
@@ -3085,7 +3048,7 @@ static void calc_diff(struct work *work, double known)
 {
 	struct cgminer_pool_stats *pool_stats = &(work->pool->cgminer_pool_stats);
 	double difficulty;
-	int intdiff;
+	uint64_t uintdiff;
 
 	if (known)
 		work->work_difficulty = known;
@@ -3101,8 +3064,8 @@ static void calc_diff(struct work *work, double known)
 	difficulty = work->work_difficulty;
 
 	pool_stats->last_diff = difficulty;
-	intdiff = round(difficulty);
-	suffix_string(intdiff, work->pool->diff, sizeof(work->pool->diff), 0);
+	uintdiff = round(difficulty);
+	suffix_string(uintdiff, work->pool->diff, sizeof(work->pool->diff), 0);
 
 	if (difficulty == pool_stats->min_diff)
 		pool_stats->min_diff_count++;
@@ -3947,8 +3910,6 @@ int restart_wait(struct thr_info *thr, unsigned int mstime)
 
 	return rc;
 }
-	
-static void flush_queue(struct cgpu_info *cgpu);
 
 static void *restart_thread(void __maybe_unused *arg)
 {
@@ -4464,24 +4425,16 @@ void write_config(FILE *fcfg)
 		fprintf(fcfg, ",\n\"icarus-options\" : \"%s\"", json_escape(opt_icarus_options));
 	if (opt_icarus_timing)
 		fprintf(fcfg, ",\n\"icarus-timing\" : \"%s\"", json_escape(opt_icarus_timing));
-#ifdef USE_BMSC
-	if (opt_bmsc_options)
-		fprintf(fcfg, ",\n\"bmsc-options\" : \"%s\"", json_escape(opt_bmsc_options));
-	if (opt_bmsc_timing)
-		fprintf(fcfg, ",\n\"bmsc-timing\" : \"%s\"", json_escape(opt_bmsc_timing));
-	if (opt_bmsc_freq)
-		fprintf(fcfg, ",\n\"bmsc-freq\" : \"%s\"", json_escape(opt_bmsc_freq));
-	if (opt_bmsc_rdreg)
-		fprintf(fcfg, ",\n\"bmsc-rdreg\" : \"%s\"", json_escape(opt_bmsc_rdreg));
-#endif
 #ifdef USE_KLONDIKE
 	if (opt_klondike_options)
-		fprintf(fcfg, ",\n\"klondike-options\" : \"%s\"", json_escape(opt_icarus_options));
+		fprintf(fcfg, ",\n\"klondike-options\" : \"%s\"", json_escape(opt_klondike_options));
 #endif
 #ifdef USE_DRILLBIT
         if (opt_drillbit_options)
                 fprintf(fcfg, ",\n\"drillbit-options\" : \"%s\"", json_escape(opt_drillbit_options));
 #endif
+	if (opt_bab_options)
+		fprintf(fcfg, ",\n\"bab-options\" : \"%s\"", json_escape(opt_bab_options));
 #ifdef USE_USBUTILS
 	if (opt_usb_select)
 		fprintf(fcfg, ",\n\"usb\" : \"%s\"", json_escape(opt_usb_select));
@@ -4563,6 +4516,11 @@ void zero_stats(void)
 		cgpu->diff_rejected = 0;
 		cgpu->last_share_diff = 0;
 		mutex_unlock(&hash_lock);
+
+		/* Don't take any locks in the driver zero stats function, as
+		 * it's called async from everything else and we don't want to
+		 * deadlock. */
+		cgpu->drv->zero_stats(cgpu);
 	}
 }
 
@@ -6417,7 +6375,12 @@ struct work *get_queued(struct cgpu_info *cgpu)
 	wr_lock(&cgpu->qlock);
 	if (cgpu->unqueued_work) {
 		work = cgpu->unqueued_work;
-		__add_queued(cgpu, work);
+		if (unlikely(stale_work(work, false))) {
+			discard_work(work);
+			work = NULL;
+			wake_gws();
+		} else
+			__add_queued(cgpu, work);
 		cgpu->unqueued_work = NULL;
 	}
 	wr_unlock(&cgpu->qlock);
@@ -6544,7 +6507,7 @@ struct work *take_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate,
 	return work;
 }
 
-static void flush_queue(struct cgpu_info *cgpu)
+void flush_queue(struct cgpu_info *cgpu)
 {
 	struct work *work = NULL;
 
@@ -7624,6 +7587,7 @@ static void noop_detect(bool __maybe_unused hotplug)
 #define noop_flush_work noop_reinit_device
 #define noop_update_work noop_reinit_device
 #define noop_queue_full noop_get_stats
+#define noop_zero_stats noop_reinit_device
 
 /* Fill missing driver drv functions with noops */
 void fill_device_drv(struct device_drv *drv)
@@ -7660,6 +7624,8 @@ void fill_device_drv(struct device_drv *drv)
 		drv->update_work = &noop_update_work;
 	if (!drv->queue_full)
 		drv->queue_full = &noop_queue_full;
+	if (!drv->zero_stats)
+		drv->zero_stats = &noop_zero_stats;
 	if (!drv->max_diff)
 		drv->max_diff = 1;
 	if (!drv->working_diff)

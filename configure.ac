@@ -1,18 +1,17 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [3])
-m4_define([v_min], [11])
+m4_define([v_min], [12])
 m4_define([v_mic], [0])
-m4_define([v_var], [jj])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
-m4_define([v_ver], [v_maj.v_min.v_mic-v_var])
+m4_define([v_ver], [v_maj.v_min.v_mic])
 m4_define([lt_rev], m4_eval(v_maj + v_min))
 m4_define([lt_cur], v_mic)
 m4_define([lt_age], v_min)
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 
-AC_INIT([cgminer], [v_ver], [jimjag@gmail.com])
+AC_INIT([cgminer], [v_ver], [kernel@kolivas.org])
 
 AC_PREREQ(2.59)
 AC_CANONICAL_SYSTEM
@@ -31,7 +30,6 @@ m4_ifdef([v_rel], , [m4_define([v_rel], [])])
 AC_DEFINE_UNQUOTED(CGMINER_MAJOR_VERSION, [v_maj], [Major version])
 AC_DEFINE_UNQUOTED(CGMINER_MINOR_VERSION, [v_min], [Minor version])
 AC_DEFINE_UNQUOTED(CGMINER_MINOR_SUBVERSION, [v_mic], [Micro version])
-AC_DEFINE(CGMINER_MINOR_VARIANT, ["v_var"], [Variant version])
 version_info="lt_rev:lt_cur:lt_age"
 release_info="v_rel"
 AC_SUBST(version_info)
@@ -194,17 +192,6 @@ if test "x$drillbit" = xyes; then
 fi
 AM_CONDITIONAL([HAS_DRILLBIT], [test x$drillbit = xyes])
 
-bmsc="no"
-
-AC_ARG_ENABLE([bmsc],
-      [AC_HELP_STRING([--enable-bmsc],[Compile support for Bitmain Antminer U1 (default disabled)])],
-      [bmsc=$enableval]
-      )
-if test "x$bmsc" = xyes; then
-      AC_DEFINE([USE_BMSC], [1], [Defined to 1 if Bitmain Antminer U1 support is wanted])
-fi
-AM_CONDITIONAL([HAS_BMSC], [test x$bmsc = xyes])
-
 hashfast="no"
 
 AC_ARG_ENABLE([hashfast],
@@ -295,7 +282,7 @@ else
 	])
 fi
 
-if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit$bmsc != xnononononononononono; then
+if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit != xnonononononononono; then
 	want_usbutils=true
 else
 	want_usbutils=false
@@ -517,12 +504,6 @@ else
 	echo "  Drillbit.BitFury.....: Disabled"
 fi
 
-if test "x$bmsc" = xyes; then
-      echo "  Bitmain.SingleChain..: Enabled"
-else
-      echo "  Bitmain.SingleChain..: Disabled"
-fi
-
 if test "x$hashfast" = xyes; then
 	echo "  Hashfast.ASICs.......: Enabled"
 else
@@ -553,7 +534,7 @@ else
 	echo "  ModMiner.FPGAs.......: Disabled"
 fi
 
-if test "x$avalon$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$bmsc$minion" = xnonononononononononononono; then
+if test "x$avalon$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion" = xnononononononononononono; then
 	AC_MSG_ERROR([No mining configured in])
 fi
 

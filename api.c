@@ -26,7 +26,7 @@
 #include "util.h"
 #include "klist.h"
 
-#if defined(USE_BFLSC) || defined(USE_AVALON) || defined(USE_HASHFAST) || defined(USE_BITFURY) || defined(USE_KLONDIKE) || defined(USE_KNC) || defined(USE_BAB) || defined(USE_DRILLBIT) || defined(USE_MINION) || defined(USE_BMSC)
+#if defined(USE_BFLSC) || defined(USE_AVALON) || defined(USE_HASHFAST) || defined(USE_BITFURY) || defined(USE_KLONDIKE) || defined(USE_KNC) || defined(USE_BAB) || defined(USE_DRILLBIT) || defined(USE_MINION)
 #define HAVE_AN_ASIC 1
 #endif
 
@@ -186,9 +186,6 @@ static const char *DEVICECODE = ""
 #endif
 #ifdef USE_MODMINER
 			"MMQ "
-#endif
-#ifdef USE_BMSC
-			"ANT "
 #endif
 			"";
 
@@ -892,6 +889,10 @@ static struct api_data *api_add_data_full(struct api_data *root, char *name, enu
 				api_data->data = (void *)malloc(sizeof(uint32_t));
 				*((uint32_t *)(api_data->data)) = *((uint32_t *)data);
 				break;
+			case API_HEX32:
+				api_data->data = (void *)malloc(sizeof(uint32_t));
+				*((uint32_t *)(api_data->data)) = *((uint32_t *)data);
+				break;
 			case API_UINT64:
 				api_data->data = (void *)malloc(sizeof(uint64_t));
 				*((uint64_t *)(api_data->data)) = *((uint64_t *)data);
@@ -975,6 +976,11 @@ struct api_data *api_add_uint(struct api_data *root, char *name, unsigned int *d
 struct api_data *api_add_uint32(struct api_data *root, char *name, uint32_t *data, bool copy_data)
 {
 	return api_add_data_full(root, name, API_UINT32, (void *)data, copy_data);
+}
+
+struct api_data *api_add_hex32(struct api_data *root, char *name, uint32_t *data, bool copy_data)
+{
+	return api_add_data_full(root, name, API_HEX32, (void *)data, copy_data);
 }
 
 struct api_data *api_add_uint64(struct api_data *root, char *name, uint64_t *data, bool copy_data)
@@ -1160,6 +1166,9 @@ static struct api_data *print_data(struct io_data *io_data, struct api_data *roo
 			case API_UINT32:
 				snprintf(buf, sizeof(buf), "%"PRIu32, *((uint32_t *)(root->data)));
 				break;
+			case API_HEX32:
+				snprintf(buf, sizeof(buf), "0x%08x", *((uint32_t *)(root->data)));
+				break;
 			case API_UINT64:
 				snprintf(buf, sizeof(buf), "%"PRIu64, *((uint64_t *)(root->data)));
 				break;
@@ -1195,8 +1204,8 @@ static struct api_data *print_data(struct io_data *io_data, struct api_data *roo
 				break;
 			case API_TIMEVAL:
 				snprintf(buf, sizeof(buf), "%ld.%06ld",
-					(long)((struct timeval *)(root->data))->tv_sec,
-					(long)((struct timeval *)(root->data))->tv_usec);
+					((struct timeval *)(root->data))->tv_sec,
+					((struct timeval *)(root->data))->tv_usec);
 				break;
 			case API_TEMP:
 				snprintf(buf, sizeof(buf), "%.2f", *((float *)(root->data)));
