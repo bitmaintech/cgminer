@@ -14,6 +14,7 @@ EXTRA_DIST	= example.conf linux-usb-cgminer \
 		  API.class API.java api-example.c windows-build.txt \
 		  bitstreams/* API-README FPGA-README \
 		  bitforce-firmware-flash.c hexdump.c ASIC-README \
+		  ADL_SDK/readme.txt SCRYPT-README GPU-README \
 		  01-cgminer.rules
 
 SUBDIRS		= lib compat ccan
@@ -42,6 +43,23 @@ cgminer_SOURCES	+= elist.h miner.h compat.h bench_block.h	\
 		   sha2.c sha2.h api.c
 
 cgminer_SOURCES	+= logging.c
+
+if HAS_OPENCL
+bin_SCRIPTS	= $(top_srcdir)/*.cl
+
+cgminer_SOURCES += driver-opencl.h driver-opencl.c
+cgminer_SOURCES += ocl.c ocl.h
+cgminer_SOURCES += adl.c adl.h adl_functions.h
+cgminer_SOURCES += *.cl
+cgminer_LDADD += @OPENCL_LIBS@
+cgminer_CPPFLAGS += @OPENCL_FLAGS@
+cgminer_CPPFLAGS += $(ADL_CPPFLAGS)
+
+if HAS_SCRYPT
+cgminer_SOURCES += scrypt.c scrypt.h
+endif
+
+endif
 
 cgminer_SOURCES	+= klist.h klist.c
 

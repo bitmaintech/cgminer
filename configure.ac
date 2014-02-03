@@ -4,7 +4,8 @@ m4_define([v_maj], [3])
 m4_define([v_min], [12])
 m4_define([v_mic], [0])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
-m4_define([v_ver], [v_maj.v_min.v_mic])
+m4_define([v_var], [jj])
+m4_define([v_ver], [v_maj.v_min.v_mic-v_var])
 m4_define([lt_rev], m4_eval(v_maj + v_min))
 m4_define([lt_cur], v_mic)
 m4_define([lt_age], v_min)
@@ -63,6 +64,7 @@ AC_FUNC_ALLOCA
 have_win32=false
 PTHREAD_FLAGS="-lpthread"
 DLOPEN_FLAGS="-ldl"
+OPENCL_LIBS="-lOpenCL"
 WS2_LIBS=""
 MM_LIBS=""
 MATH_LIBS="-lm"
@@ -96,15 +98,35 @@ case $target in
   powerpc-*-darwin*)
     have_darwin=true
     CFLAGS="$CFLAGS -faltivec"
+    OPENCL_LIBS=""
     PTHREAD_FLAGS=""
     RT_LIBS=""
     ;;
   *-*-darwin*)
     have_darwin=true
+    OPENCL_LIBS="-framework OpenCL"
     PTHREAD_FLAGS=""
     RT_LIBS=""
 	;;
 esac
+
+if test "x$have_win32" != xtrue; then
+	if test "x$have_x86_64" = xtrue; then
+		ARCH_DIR=x86_64
+	else
+		ARCH_DIR=x86
+	fi
+
+	if test "x$ATISTREAMSDKROOT" != x; then
+		OPENCL_FLAGS="-I$ATISTREAMSDKROOT/include $OPENCL_FLAGS"
+		OPENCL_LIBS="-L$ATISTREAMSDKROOT/lib/$ARCH_DIR $OPENCL_LIBS"
+	fi
+
+	if test "x$AMDAPPSDKROOT" != x; then
+		OPENCL_FLAGS="-I$AMDAPPSDKROOT/include $OPENCL_FLAGS"
+		OPENCL_LIBS="-L$AMDAPPSDKROOT/lib/$ARCH_DIR $OPENCL_LIBS"
+	fi
+fi
 
 have_cgminer_sdk=false
 if test -n "$CGMINER_SDK"; then
@@ -112,6 +134,45 @@ if test -n "$CGMINER_SDK"; then
 	CPPFLAGS="-I$CGMINER_SDK/include $CPPFLAGS"
 	LDFLAGS="-L$CGMINER_SDK/lib/$target $LDFLAGS"
 fi
+
+opencl="no"
+
+AC_ARG_ENABLE([opencl],
+	[AC_HELP_STRING([--enable-opencl],[Enable support for GPU mining with opencl])],
+	[opencl=$enableval]
+	)
+if test "x$opencl" != xno; then
+	# Check for OpenCL (the long way needed on mingw32 due to calling conventions)
+	AC_MSG_CHECKING([for OpenCL])
+	SAVED_LIBS=$LIBS
+	SAVED_CFLAGS=$CFLAGS
+	LIBS="$LIBS $OPENCL_LIBS"
+	CFLAGS="$CFLAGS $OPENCL_FLAGS"
+	AC_LINK_IFELSE(
+	[AC_LANG_PROGRAM([[
+		#ifdef __APPLE_CC__
+		#include <OpenCL/opencl.h>
+		#else
+		#include <CL/cl.h>
+		#endif
+	]],
+	[[return clSetKernelArg(0, 0, 0, 0); ]])],
+	[AC_MSG_RESULT(yes)
+	AC_DEFINE([HAVE_OPENCL], [1], [Defined to 1 if OpenCL is present on the system.])
+	found_opencl=1
+	],
+	[AC_MSG_RESULT(no)
+	OPENCL_FLAGS=
+	OPENCL_LIBS=
+	found_opencl=0])
+	LIBS=$SAVED_LIBS
+	CFLAGS=$SAVED_CFLAGS
+else
+	OPENCL_FLAGS=""
+	OPENCL_LIBS=""
+fi
+AM_CONDITIONAL([HAS_OPENCL], [test x$opencl = xyes])
+
 
 has_winpthread=false
 if test "x$have_win32" = xtrue; then
@@ -125,6 +186,42 @@ if test "x$has_winpthread" != xtrue; then
                 AC_MSG_ERROR([Could not find pthread library - please install libpthread]))
         PTHREAD_LIBS=-lpthread
 fi
+
+AC_ARG_ENABLE([adl],
+	[AC_HELP_STRING([--disable-adl],[Override detection and disable building with adl])],
+	[adl=$enableval]
+	)
+
+scrypt="no"
+
+if test "$found_opencl" = 1; then
+	if test "x$adl" != xno; then
+		ADL_CPPFLAGS=
+		AC_CHECK_FILE([$srcdir/ADL_SDK/adl_sdk.h], [have_adl=true; ADL_CPPFLAGS=-I$srcdir], have_adl=false,)
+		if test x$have_adl+$have_cgminer_sdk = xfalse+true; then
+			AC_CHECK_FILE([$CGMINER_SDK/include/ADL_SDK/adl_sdk.h], [have_adl=true; ADL_CPPFLAGS=-I$CGMINER_SDK/include], have_adl=false,)
+		fi
+		if test x$have_adl = xtrue
+		then
+			AC_DEFINE([HAVE_ADL], [1], [Defined if ADL headers were found])
+		else
+			DLOPEN_FLAGS=""
+		fi
+	fi
+
+	AC_ARG_ENABLE([scrypt],
+		[AC_HELP_STRING([--enable-scrypt],[Compile support for scrypt litecoin mining (default disabled)])],
+		[scrypt=$enableval]
+		)
+	if test "x$scrypt" = xyes; then
+		AC_DEFINE([USE_SCRYPT], [1], [Defined to 1 if scrypt support is wanted])
+	fi
+else
+	DLOPEN_FLAGS=""
+fi
+
+AM_CONDITIONAL([HAS_SCRYPT], [test x$scrypt = xyes])
+
 
 avalon="no"
 
@@ -421,6 +518,14 @@ fi
 
 AC_DEFINE_UNQUOTED([CGMINER_PREFIX], ["$prefix/bin"], [Path to cgminer install])
 
+AC_DEFINE_UNQUOTED([PHATK_KERNNAME], ["phatk121016"], [Filename for phatk kernel])
+AC_DEFINE_UNQUOTED([POCLBM_KERNNAME], ["poclbm130302"], [Filename for poclbm kernel])
+AC_DEFINE_UNQUOTED([DIAKGCN_KERNNAME], ["diakgcn121016"], [Filename for diakgcn kernel])
+AC_DEFINE_UNQUOTED([DIABLO_KERNNAME], ["diablo130302"], [Filename for diablo kernel])
+AC_DEFINE_UNQUOTED([SCRYPT_KERNNAME], ["scrypt130511"], [Filename for scrypt kernel])
+
+AC_SUBST(OPENCL_LIBS)
+AC_SUBST(OPENCL_FLAGS)
 AC_SUBST(JANSSON_LIBS)
 AC_SUBST(PTHREAD_FLAGS)
 AC_SUBST(DLOPEN_FLAGS)
@@ -431,6 +536,7 @@ AC_SUBST(WS2_LIBS)
 AC_SUBST(MM_LIBS)
 AC_SUBST(MATH_LIBS)
 AC_SUBST(RT_LIBS)
+AC_SUBST(ADL_CPPFLAGS)
 
 AC_CONFIG_FILES([
 	Makefile
@@ -460,6 +566,33 @@ fi
 
 echo "  curses.TUI...........: $cursesmsg"
 
+echo
+if test "x$opencl" == xyes; then
+	if test $found_opencl = 1; then
+		echo "  OpenCL...............: Enabled"
+		if test "x$scrypt" != xno; then
+			echo "  scrypt...............: Enabled"
+		else
+			echo "  scrypt...............: Disabled"
+		fi
+	else
+		echo "  OpenCL...............: Disabled"
+		echo "  scrypt...............: Disabled (needs OpenCL)"
+	fi
+else
+	echo "  OpenCL...............: Disabled"
+	echo "  scrypt...............: Disabled (needs OpenCL)"
+fi
+
+if test "x$adl" = xyes; then
+	if test x$have_adl = xtrue; then
+		echo "  ADL..................: Enabled (SDK found)"
+	else
+		echo "  ADL..................: Disabled (SDK NOT found)"
+	fi
+else
+	echo "  ADL..................: Disabled"
+fi
 
 echo
 if test "x$avalon" = xyes; then
@@ -534,7 +667,7 @@ else
 	echo "  ModMiner.FPGAs.......: Disabled"
 fi
 
-if test "x$avalon$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion" = xnononononononononononono; then
+if test "x$avalon$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion$opencl" = xnonononononononononononono; then
 	AC_MSG_ERROR([No mining configured in])
 fi
 
@@ -543,7 +676,7 @@ echo "Compilation............: make (or gmake)"
 echo "  CPPFLAGS.............: $CPPFLAGS"
 echo "  CFLAGS...............: $CFLAGS"
 echo "  LDFLAGS..............: $LDFLAGS $PTHREAD_FLAGS"
-echo "  LDADD................: $DLOPEN_FLAGS $LIBCURL_LIBS $JANSSON_LIBS $PTHREAD_LIBS $NCURSES_LIBS $PDCURSES_LIBS $WS2_LIBS $MATH_LIBS $LIBUSB_LIBS $RT_LIBS"
+echo "  LDADD................: $DLOPEN_FLAGS $LIBCURL_LIBS $JANSSON_LIBS $PTHREAD_LIBS $OPENCL_LIBS $NCURSES_LIBS $PDCURSES_LIBS $WS2_LIBS $MATH_LIBS $LIBUSB_LIBS $RT_LIBS"
 echo
 echo "Installation...........: make install (as root if needed, with 'su' or 'sudo')"
 echo "  prefix...............: $prefix"
