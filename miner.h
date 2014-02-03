@@ -1244,7 +1244,7 @@ typedef struct {
 	uint32_t nonce;
 } dev_blk_ctx;
 #endif
-
+extern char *opt_bmsc_freq;
 struct curl_ent {
 	CURL *curl;
 	struct list_head node;

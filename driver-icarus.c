@@ -280,8 +280,62 @@ struct ICARUS_WORK {
 //
 static int option_offset = -1;
 
+unsigned char CRC5(unsigned char *ptr, unsigned char len)
+{
+    unsigned char i, j, k;
+    unsigned char crc = 0x1f;
+
+    unsigned char crcin[5] = {1, 1, 1, 1, 1};
+    unsigned char crcout[5] = {1, 1, 1, 1, 1};
+    unsigned char din = 0;
+
+    j = 0x80;
+    k = 0;
+    for (i = 0; i < len; i++)
+    {
+    	if (*ptr & j) {
+    		din = 1;
+    	} else {
+    		din = 0;
+    	}
+    	crcout[0] = crcin[4] ^ din;
+    	crcout[1] = crcin[0];
+    	crcout[2] = crcin[1] ^ crcin[4] ^ din;
+    	crcout[3] = crcin[2];
+    	crcout[4] = crcin[3];
+
+        j = j >> 1;
+        k++;
+        if (k == 8)
+        {
+            j = 0x80;
+            k = 0;
+            ptr++;
+        }
+        memcpy(crcin, crcout, 5);
+    }
+    crc = 0;
+    if(crcin[4]) {
+    	crc |= 0x10;
+    }
+    if(crcin[3]) {
+    	crc |= 0x08;
+    }
+    if(crcin[2]) {
+    	crc |= 0x04;
+    }
+    if(crcin[1]) {
+    	crc |= 0x02;
+    }
+    if(crcin[0]) {
+    	crc |= 0x01;
+    }
+    return crc;
+}
+
 /*
 #define ICA_BUFSIZ (0x200)
+
 
 static void transfer_read(struct cgpu_info *icarus, uint8_t request_type, uint8_t bRequest, uint16_t wValue, uint16_t wIndex, char *buf, int bufsiz, int *amount, enum usb_cmds cmd)
 {
@@ -876,6 +930,119 @@ cmr2_retry:
 	ok = false;
 	while (!ok && tries-- > 0) {
 		icarus_initialise(icarus, baud);
+
+		if (opt_bmsc_freq) {
+#define BMSC_READ_BUF_LEN 8192
+#define BMSC_READ_SIZE 5
+			unsigned char cmd_buf[4] = {0};
+			unsigned char rdreg_buf[4] = {0};
+			unsigned char reg_data[4] = {0};
+
+			unsigned char rebuf[BMSC_READ_BUF_LEN] = {0};
+			int relen = 0;
+			int realllen = 0;
+			int nodata = 0;
+			char msg[10240] = {0};
+			int sendfreqstatus = 1;
+			if (strcmp(opt_bmsc_freq, "0") != 0) {
+				applog(LOG_DEBUG, "Device detect freq parameter=%s", opt_bmsc_freq);
+				if (strlen(opt_bmsc_freq) > 8 || strlen(opt_bmsc_freq) % 2 != 0 || strlen(opt_bmsc_freq) / 2 == 0) {
+					quit(1, "Invalid bmsc_freq for freq data, must be hex now: %s", opt_bmsc_freq);
+				}
+				memset(reg_data, 0, 4);
+				if (!hex2bin(reg_data, opt_bmsc_freq, strlen(opt_bmsc_freq) / 2)) {
+					quit(1, "Invalid bmsc_freq for freq data, hex2bin error now: %s", opt_bmsc_freq);
+				}
+				cmd_buf[0] = 2;
+				cmd_buf[0] |= 0x80;
+				cmd_buf[1] = reg_data[0]; //16-23
+				cmd_buf[2] = reg_data[1];  //8-15
+				cmd_buf[3] = CRC5(cmd_buf, 27);
+				applog(LOG_DEBUG, "Set_frequency cmd_buf[1]{%02x}cmd_buf[2]{%02x}", cmd_buf[1], cmd_buf[2]);
+
+				rdreg_buf[0] = 4;
+				rdreg_buf[0] |= 0x80;
+				rdreg_buf[1] = 0; //16-23
+				rdreg_buf[2] = 0x04;  //8-15
+				rdreg_buf[3] = CRC5(rdreg_buf, 27);
+
+				applog(LOG_DEBUG, "-----------------start freq-------------------");
+				cgsleep_ms(500);
+
+				applog(LOG_DEBUG, "Send frequency %02x%02x%02x%02x", cmd_buf[0], cmd_buf[1], cmd_buf[2], cmd_buf[3]);
+				err = usb_write_ii(icarus, info->intinfo, (char * )cmd_buf, 4, &amount, C_SENDWORK);
+				if (err != LIBUSB_SUCCESS || amount != 4) {
+					applog(LOG_ERR, "%s%i: Write freq Comms error (werr=%d amount=%d)", icarus->drv->name, icarus->device_id, err, amount);
+					continue;
+				}
+				applog(LOG_DEBUG, "Send frequency ok");
+
+				cgsleep_ms(500);
+
+				applog(LOG_DEBUG, "Send freq getstatus %02x%02x%02x%02x", rdreg_buf[0], rdreg_buf[1], rdreg_buf[2], rdreg_buf[3]);
+
+				for(i = 0; i < 10; i++) {
+					usb_read_ii_timeout_cancellable(icarus, info->intinfo, (char * )rebuf, BMSC_READ_SIZE, &relen, 100, C_GETRESULTS);
+				}
+
+				err = usb_write_ii(icarus, info->intinfo, (char * )rdreg_buf, 4, &amount, C_SENDWORK);
+				if (err != LIBUSB_SUCCESS || amount != 4) {
+					applog(LOG_ERR, "%s%i: Write freq getstatus Comms error (werr=%d amount=%d)", icarus->drv->name, icarus->device_id, err, amount);
+					continue;
+				}
+				applog(LOG_DEBUG, "Send freq getstatus ok");
+
+				nodata = 0;
+				realllen = 0;
+				while (1) {
+					relen = 0;
+					err = usb_read_ii_timeout_cancellable(icarus, info->intinfo, (char * )rebuf + realllen, BMSC_READ_SIZE, &relen, 200, C_GETRESULTS);
+					if (err < 0 && err != LIBUSB_ERROR_TIMEOUT) {
+						applog(LOG_ERR, "%s%i: Read freq Comms error (rerr=%d relen=%d)", icarus->drv->name, icarus->device_id, err, relen);
+						break;
+					} else if (err == LIBUSB_ERROR_TIMEOUT) {
+						applog(LOG_DEBUG, "%s%i: Read freq Comms timeout (rerr=%d relen=%d)", icarus->drv->name, icarus->device_id, err, relen);
+
+						nodata++;
+						if (nodata > 5) {
+							if (realllen <= 0) {
+								if (sendfreqstatus) {
+									sendfreqstatus = 0;
+									applog(LOG_DEBUG, "Send freq getstatus %02x%02x%02x%02x", rdreg_buf[0], rdreg_buf[1], rdreg_buf[2], rdreg_buf[3]);
+									usb_read_ii_timeout_cancellable(icarus, info->intinfo, (char * )rebuf, BMSC_READ_SIZE, &relen, 200, C_GETRESULTS);
+									err = usb_write_ii(icarus, info->intinfo, (char * )rdreg_buf, 4, &amount, C_SENDWORK);
+									if (err != LIBUSB_SUCCESS || amount != 4) {
+										applog(LOG_ERR, "%s%i: Write freq getstatus Comms error (werr=%d amount=%d)", icarus->drv->name, icarus->device_id, err, amount);
+										continue;
+									}
+									applog(LOG_DEBUG, "Send freq getstatus ok");
+								} else {
+									applog(LOG_DEBUG, "------recv freq getstatus no data finish------");
+									break;
+								}
+							} else {
+								applog(LOG_DEBUG, "Recv freq getstatus len=%d", realllen);
+								for (i = 0; i < realllen; i += 5) {
+									applog(LOG_DEBUG, "Recv %d freq getstatus=%02x%02x%02x%02x%02x", i / 5 + 1, rebuf[i], rebuf[i + 1], rebuf[i + 2], rebuf[i + 3], rebuf[i + 4]);
+								}
+								applog(LOG_DEBUG, "--------recv freq getstatus ok finish---------");
+								break;
+							}
+						}
+						continue;
+					} else {
+						nodata = 0;
+						realllen += relen;
+						for (i = 0; i < relen; i++) {
+							sprintf(msg + i * 2, "%02x", rebuf[i]);
+						}
+						applog(LOG_DEBUG, "Read data(%d):%s", relen, msg);
+					}
+				}
+			} else {
+				applog(LOG_ERR, "Device detect freq 0 parameter");
+			}
+		}
 
 		err = usb_write_ii(icarus, info->intinfo,
 				   (char *)(&workdata), sizeof(workdata), &amount, C_SENDWORK);

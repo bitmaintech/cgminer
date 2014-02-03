@@ -347,6 +347,7 @@ int opt_dynamic_interval = 7;
 int opt_g_threads = -1;
 int gpu_threads;
 #endif
+char *opt_bmsc_freq = "0781";
 
 static bool time_before(struct tm *tm1, struct tm *tm2)
 {
@@ -1046,6 +1047,14 @@ static char *set_icarus_timing(const char *arg)
 
 	return NULL;
 }
+
+static char *set_bmsc_freq(const char *arg)
+{
+	opt_set_charp(arg, &opt_bmsc_freq);
+
+	return NULL;
+}
+
 #endif
 
 #ifdef USE_AVALON
@@ -1203,6 +1212,9 @@ static struct opt_table opt_config_table[] = {
 		     opt_hidden),
 	OPT_WITH_ARG("--icarus-timing",
 		     set_icarus_timing, NULL, NULL,
+		     opt_hidden),
+	OPT_WITH_ARG("--bmsc-freq",
+		     set_bmsc_freq, NULL, NULL,
 		     opt_hidden),
 #endif
 #ifdef USE_AVALON
@@ -4660,6 +4672,8 @@ void write_config(FILE *fcfg)
 		fprintf(fcfg, ",\n\"icarus-options\" : \"%s\"", json_escape(opt_icarus_options));
 	if (opt_icarus_timing)
 		fprintf(fcfg, ",\n\"icarus-timing\" : \"%s\"", json_escape(opt_icarus_timing));
+	if (opt_bmsc_freq)
+		fprintf(fcfg, ",\n\"bmsc-freq\" : \"%s\"", json_escape(opt_bmsc_freq));
 #ifdef USE_KLONDIKE
 	if (opt_klondike_options)
 		fprintf(fcfg, ",\n\"klondike-options\" : \"%s\"", json_escape(opt_klondike_options));
