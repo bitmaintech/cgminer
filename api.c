@@ -1268,7 +1268,7 @@ static struct api_data *print_data(struct io_data *io_data, struct api_data *roo
 			case API_UTILITY:
 			case API_FREQ:
 			case API_MHS:
-				snprintf(buf, sizeof(buf), "%.2f", *((double *)(root->data)));
+				snprintf(buf, sizeof(buf), "%.6f", *((double *)(root->data)));
 				break;
 			case API_VOLTS:
 			case API_AVG:
