@@ -24,6 +24,9 @@ int opt_hfa_overheat = HFA_TEMP_OVERHEAT;
 int opt_hfa_target = HFA_TEMP_TARGET;
 bool opt_hfa_pll_bypass;
 bool opt_hfa_dfu_boot;
+int opt_hfa_fan_default = HFA_FAN_DEFAULT;
+int opt_hfa_fan_max = HFA_FAN_MAX;
+int opt_hfa_fan_min = HFA_FAN_MIN;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Support for the CRC's used in header (CRC-8) and packet body (CRC-32)
@@ -102,7 +105,10 @@ static const struct hfa_cmd hfa_cmds[] = {
 	{OP_USB_STATS1, "OP_USB_STATS1", C_NULL},
 	{OP_USB_GWQSTATS, "OP_USB_GWQSTATS", C_HF_GWQSTATS},
 	{OP_USB_NOTICE, "OP_USB_NOTICE", C_HF_NOTICE},
-	{OP_PING, "OP_PING", C_HF_PING}
+	{OP_PING, "OP_PING", C_HF_PING},
+	{OP_CORE_MAP, "OP_CORE_MAP", C_NULL},
+	{OP_VERSION, "OP_VERSION", C_NULL},			// 32
+	{OP_FAN, "OP_FAN", C_HF_FAN}
 };
 
 #define HF_USB_CMD_OFFSET (128 - 18)
@@ -110,27 +116,12 @@ static const struct hfa_cmd hfa_cmds[] = {
 
 /* Send an arbitrary frame, consisting of an 8 byte header and an optional
  * packet body. */
-
-static bool hfa_send_frame(struct cgpu_info *hashfast, uint8_t opcode, uint16_t hdata,
-			   uint8_t *data, int len)
+static bool __hfa_send_frame(struct cgpu_info *hashfast, uint8_t opcode, int tx_length,
+			     uint8_t *packet)
 {
-	int tx_length, ret, amount, id = hashfast->device_id;
 	struct hashfast_info *info = hashfast->device_data;
-	uint8_t packet[256];
-	struct hf_header *p = (struct hf_header *)packet;
+	int ret, amount, id = hashfast->device_id;
 	bool retried = false;
-
-	p->preamble = HF_PREAMBLE;
-	p->operation_code = hfa_cmds[opcode].cmd;
-	p->chip_address = HF_GWQ_ADDRESS;
-	p->core_address = 0;
-	p->hdata = htole16(hdata);
-	p->data_length = len / 4;
-	p->crc8 = hfa_crc8(packet);
-
-	if (len)
-		memcpy(&packet[sizeof(struct hf_header)], data, len);
-	tx_length = sizeof(struct hf_header) + len;
 
 	if (unlikely(hashfast->usbinfo.nodev))
 		return false;
@@ -158,6 +149,28 @@ retry:
 		applog(LOG_ERR, "%s %d: hfa_send_frame: recovered OK", hashfast->drv->name, id);
 
 	return true;
+}
+
+static bool hfa_send_frame(struct cgpu_info *hashfast, uint8_t opcode, uint16_t hdata,
+			   uint8_t *data, int len)
+{
+	uint8_t packet[256];
+	struct hf_header *p = (struct hf_header *)packet;
+	int tx_length;
+
+	p->preamble = HF_PREAMBLE;
+	p->operation_code = hfa_cmds[opcode].cmd;
+	p->chip_address = HF_GWQ_ADDRESS;
+	p->core_address = 0;
+	p->hdata = htole16(hdata);
+	p->data_length = len / 4;
+	p->crc8 = hfa_crc8(packet);
+
+	if (len)
+		memcpy(&packet[sizeof(struct hf_header)], data, len);
+	tx_length = sizeof(struct hf_header) + len;
+
+	return (__hfa_send_frame(hashfast, opcode, tx_length, packet));
 }
 
 /* Send an already assembled packet, consisting of an 8 byte header which may
@@ -316,7 +329,7 @@ resend:
 	// We extend the normal timeout - a complete device initialization, including
 	// bringing power supplies up from standby, etc., can take over a second.
 tryagain:
-	for (i = 0; i < 10; i++) {
+	for (i = 0; i < 3; i++) {
 		ret = hfa_get_header(hashfast, h, &hcrc);
 		if (unlikely(hashfast->usbinfo.nodev))
 			return false;
@@ -665,7 +678,7 @@ static void hfa_update_die_status(struct cgpu_info *hashfast, struct hashfast_in
 {
 	struct hf_g1_die_data *d = (struct hf_g1_die_data *)(h + 1), *ds;
 	int num_included = (h->data_length * 4) / sizeof(struct hf_g1_die_data);
-	int i, j;
+	int i, j, die = h->chip_address;
 
 	float die_temperature;
 	float core_voltage[6];
@@ -675,17 +688,13 @@ static void hfa_update_die_status(struct cgpu_info *hashfast, struct hashfast_in
 	for (i = 0; i < num_included; i++)
 		memcpy(ds++, d++, sizeof(struct hf_g1_die_data));
 
-	info->max_temp = 0;
 	for (i = 0, d = &info->die_status[h->chip_address]; i < num_included; i++, d++) {
-		int die = h->chip_address + i;
-
+		die += i;
 		die_temperature = GN_DIE_TEMPERATURE(d->die.die_temperature);
 		/* Sanity checking */
 		if (unlikely(die_temperature > 255))
 			die_temperature = info->die_data[die].temp;
 		info->die_data[die].temp = die_temperature;
-		if (die_temperature > info->max_temp)
-			info->max_temp = die_temperature;
 		for (j = 0; j < 6; j++)
 			core_voltage[j] = GN_CORE_VOLTAGE(d->die.core_voltage[j]);
 
@@ -694,6 +703,18 @@ static void hfa_update_die_status(struct cgpu_info *hashfast, struct hashfast_in
 			core_voltage[0], core_voltage[1], core_voltage[2],
 			core_voltage[3], core_voltage[4], core_voltage[5]);
 		// XXX Convert board phase currents, voltage, temperature
+	}
+	if (die == info->asic_count - 1) {
+		info->temp_updates++;
+		/* We have a full set of die temperatures, find the highest
+		 * current die temp. */
+		die_temperature = 0;
+		for (die = 0; die < info->asic_count; die++) {
+			if (info->die_data[die].temp > die_temperature)
+				die_temperature = info->die_data[die].temp;
+		}
+		/* Exponentially change the max_temp to smooth out troughs. */
+		info->max_temp = info->max_temp * 0.63 + die_temperature * 0.37;
 	}
 
 	if (unlikely(info->max_temp >= opt_hfa_overheat)) {
@@ -907,6 +928,9 @@ static void *hfa_read(void *arg)
 	return NULL;
 }
 
+static void hfa_set_fanspeed(struct cgpu_info *hashfast, struct hashfast_info *info,
+			     int fanspeed);
+
 static bool hfa_prepare(struct thr_info *thr)
 {
 	struct cgpu_info *hashfast = thr->cgpu;
@@ -921,6 +945,7 @@ static bool hfa_prepare(struct thr_info *thr)
 	get_datestamp(hashfast->init, sizeof(hashfast->init), &now);
 	hashfast->last_device_valid_work = time(NULL);
 	info->resets = 0;
+	hfa_set_fanspeed(hashfast, info, opt_hfa_fan_default);
 
 	return true;
 }
@@ -953,12 +978,40 @@ out:
 	return ret;
 }
 
+static void hfa_set_fanspeed(struct cgpu_info *hashfast, struct hashfast_info *info,
+			     int fandiff)
+{
+	const uint8_t opcode = HF_USB_CMD(OP_FAN);
+	uint8_t packet[256];
+	struct hf_header *p = (struct hf_header *)packet;
+	const int tx_length = sizeof(struct hf_header);
+	uint16_t hdata;
+	int fandata;
+
+	info->fanspeed += fandiff;
+	if (info->fanspeed > opt_hfa_fan_max)
+		info->fanspeed = opt_hfa_fan_max;
+	else if (info->fanspeed < opt_hfa_fan_min)
+		info->fanspeed = opt_hfa_fan_min;
+	fandata = info->fanspeed * 255 / 100; // Fanspeed is in percent, hdata 0-255
+	hdata = fandata; // Use an int first to avoid overflowing uint16_t
+	p->preamble = HF_PREAMBLE;
+	p->operation_code = hfa_cmds[opcode].cmd;
+	p->chip_address = 0xff;
+	p->core_address = 1;
+	p->hdata = htole16(hdata);
+	p->data_length = 0;
+	p->crc8 = hfa_crc8(packet);
+
+	__hfa_send_frame(hashfast, opcode, tx_length, packet);
+}
+
 static void hfa_increase_clock(struct cgpu_info *hashfast, struct hashfast_info *info,
 			       int die)
 {
 	struct hf_die_data *hdd = &info->die_data[die];
 	uint32_t diebit = 0x00000001ul << die;
-	uint16_t hdata, increase = 5;
+	uint16_t hdata, increase = 10;
 
 	if (hdd->hash_clock + increase > info->hash_clock_rate)
 		increase = info->hash_clock_rate - hdd->hash_clock;
@@ -990,11 +1043,58 @@ static void hfa_decrease_clock(struct cgpu_info *hashfast, struct hashfast_info 
 static void hfa_temp_clock(struct cgpu_info *hashfast, struct hashfast_info *info)
 {
 	time_t now_t = time(NULL);
-	int i;
+	bool throttled = false;
+	int temp_change, i;
 
 	if (!opt_hfa_target)
 		return;
 
+	/* First find out if any dies are throttled before trying to optimise
+	 * fanspeed */
+	for (i = 0; i < info->asic_count ; i++) {
+		struct hf_die_data *hdd = &info->die_data[i];
+
+		if (hdd->hash_clock < info->hash_clock_rate) {
+			throttled = true;
+			break;
+		}
+	}
+
+	/* Find the direction of temperature change since we last checked */
+	if (info->temp_updates < 5)
+		goto fan_only;
+	info->temp_updates = 0;
+	temp_change = info->max_temp - info->last_max_temp;
+	info->last_max_temp = info->max_temp;
+
+	/* Adjust fanspeeds first if possible before die speeds, increasing
+	 * speed quickly and lowering speed slowly */
+	if (info->max_temp > opt_hfa_target ||
+	    (throttled && info->max_temp >= opt_hfa_target - HFA_TEMP_HYSTERESIS)) {
+		/* We should be trying to decrease temperature, if it's not on
+		 * its way down. */
+		if (temp_change >= 0 && info->fanspeed < opt_hfa_fan_max)
+			hfa_set_fanspeed(hashfast, info, 5);
+	} else if (info->max_temp >= opt_hfa_target - HFA_TEMP_HYSTERESIS) {
+		/* In optimal range, try and maintain the same temp */
+		if (temp_change > 0) {
+			/* Temp rising, tweak fanspeed up */
+			if (info->fanspeed < opt_hfa_fan_max)
+				hfa_set_fanspeed(hashfast, info, 1);
+		} else if (temp_change < 0) {
+			/* Temp falling, tweak fanspeed down */
+			if (info->fanspeed > opt_hfa_fan_min)
+				hfa_set_fanspeed(hashfast, info, -1);
+		}
+	} else {
+		/* Below optimal range, try and increase temp */
+		if (temp_change <= 0 && !throttled) {
+			if (info->fanspeed > opt_hfa_fan_min)
+				hfa_set_fanspeed(hashfast, info, -1);
+		}
+	}
+
+fan_only:
 	/* Do no restarts at all if there has been one less than 15 seconds
 	 * ago */
 	if (now_t - info->last_restart < 15)
@@ -1021,6 +1121,9 @@ static void hfa_temp_clock(struct cgpu_info *hashfast, struct hashfast_info *inf
 			/* Already at min speed */
 			if (hdd->hash_clock == HFA_CLOCK_MIN)
 				continue;
+			/* Have some leeway before throttling speed */
+			if (hdd->temp < opt_hfa_target + HFA_TEMP_HYSTERESIS)
+				break;
 			hfa_decrease_clock(hashfast, info, i);
 		} else {
 			/* Temp below target range.*/
@@ -1186,6 +1289,7 @@ static struct api_data *hfa_api_stats(struct cgpu_info *cgpu)
 	root = api_add_int(root, "inflight target", &varint, true);
 	varint = db->sequence_modulus;
 	root = api_add_int(root, "sequence modulus", &varint, true);
+	root = api_add_int(root, "fan percent", &info->fanspeed, false);
 
 	s1 = &info->stats1;
 	root = api_add_uint64(root, "rx preambles", &s1->usb_rx_preambles, false);

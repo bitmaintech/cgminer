@@ -303,6 +303,7 @@ struct stratum_share {
 	struct work *work;
 	int id;
 	time_t sshare_time;
+	time_t sshare_sent;
 };
 
 static struct stratum_share *stratum_shares = NULL;
@@ -5351,8 +5352,15 @@ static void stratum_share_result(json_t *val, json_t *res_val, json_t *err_val,
 				 struct stratum_share *sshare)
 {
 	struct work *work = sshare->work;
+	time_t now_t = time(NULL);
 	char hashshow[64];
+	int srdiff;
 
+	srdiff = now_t - sshare->sshare_sent;
+	if (opt_debug || srdiff > 0) {
+		applog(LOG_INFO, "Pool %d stratum share result lag time %d seconds",
+		       work->pool->pool_no, srdiff);
+	}
 	show_hash(work, hashshow);
 	share_result(val, res_val, err_val, work, hashshow, false, "");
 }
@@ -5797,6 +5805,15 @@ static void *stratum_sthread(void *userdata)
 			free(sshare);
 			pool->stale_shares++;
 			total_stale++;
+		} else {
+			int ssdiff;
+
+			sshare->sshare_sent = time(NULL);
+			ssdiff = sshare->sshare_sent - sshare->sshare_time;
+			if (opt_debug || ssdiff > 0) {
+				applog(LOG_INFO, "Pool %d stratum share submission lag time %d seconds",
+				       pool->pool_no, ssdiff);
+			}
 		}
 	}
 
