@@ -14,6 +14,7 @@ EXTRA_DIST	= example.conf linux-usb-cgminer \
 		  API.class API.java api-example.c windows-build.txt \
 		  bitstreams/* API-README FPGA-README \
 		  bitforce-firmware-flash.c hexdump.c ASIC-README \
+		  ADL_SDK/readme.txt SCRYPT-README GPU-README \
 		  01-cgminer.rules
 
 SUBDIRS		= lib compat ccan
@@ -43,6 +44,25 @@ cgminer_SOURCES	+= elist.h miner.h compat.h bench_block.h	\
 
 cgminer_SOURCES	+= logging.c
 
+if HAS_OPENCL
+bin_SCRIPTS	= $(top_srcdir)/*.cl
+
+cgminer_SOURCES += driver-opencl.h driver-opencl.c
+cgminer_SOURCES += ocl.c ocl.h
+cgminer_SOURCES += adl.c adl.h adl_functions.h
+cgminer_SOURCES += *.cl
+cgminer_LDADD += @OPENCL_LIBS@
+cgminer_CPPFLAGS += @OPENCL_FLAGS@
+cgminer_CPPFLAGS += $(ADL_CPPFLAGS)
+
+if HAS_SCRYPT
+cgminer_SOURCES += scrypt.c scrypt.h
+endif
+
+endif
+
+cgminer_SOURCES	+= klist.h klist.c
+
 if NEED_FPGAUTILS
 cgminer_SOURCES += fpgautils.c fpgautils.h
 endif
@@ -51,13 +71,13 @@ if WANT_USBUTILS
 cgminer_SOURCES += usbutils.c usbutils.h
 endif
 
+if WANT_LIBBITFURY
+cgminer_SOURCES += libbitfury.c libbitfury.h mcp2210.c mcp2210.h
+endif
+
 # Device drivers
 if HAS_AVALON
 cgminer_SOURCES += driver-avalon.c driver-avalon.h
-endif
-
-if HAS_BITMAIN
-cgminer_SOURCES += driver-bitmain.c driver-bitmain.h
 endif
 
 if HAS_KNC
@@ -80,12 +100,12 @@ if HAS_BITFURY
 cgminer_SOURCES += driver-bitfury.c driver-bitfury.h
 endif
 
-if HAS_ICARUS
-cgminer_SOURCES += driver-icarus.c
+if HAS_DRILLBIT
+cgminer_SOURCES += driver-drillbit.c driver-drillbit.h
 endif
 
-if HAS_BMSC
-cgminer_SOURCES += driver-bmsc.c
+if HAS_ICARUS
+cgminer_SOURCES += driver-icarus.c
 endif
 
 if HAS_KLONDIKE
@@ -94,6 +114,10 @@ endif
 
 if HAS_BAB
 cgminer_SOURCES += driver-bab.c
+endif
+
+if HAS_MINION
+cgminer_SOURCES += driver-minion.c
 endif
 
 if HAS_MODMINER

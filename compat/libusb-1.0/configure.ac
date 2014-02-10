@@ -8,22 +8,22 @@ m4_define([LU_DEFINE_VERSION_RC_ATOM],
 	[^#define\s*$1\s*"\(-rc[0-9]*\)".*], [\1]))])
 dnl The m4_bregexp() returns (only) the numbers following the #define named
 dnl in the first macro parameter. m4_define() then defines the name for use
-dnl in AC_INIT().
+dnl in AC_INIT.
 
 LU_DEFINE_VERSION_ATOM([LIBUSB_MAJOR])
 LU_DEFINE_VERSION_ATOM([LIBUSB_MINOR])
 LU_DEFINE_VERSION_ATOM([LIBUSB_MICRO])
 LU_DEFINE_VERSION_RC_ATOM([LIBUSB_RC])
 
-AC_INIT([libusb], LIBUSB_MAJOR[.]LIBUSB_MINOR[.]LIBUSB_MICRO[]LIBUSB_RC, [libusb-devel@lists.sourceforge.net], [libusb], [http://www.libusb.org/])
+AC_INIT([libusb],[LIBUSB_MAJOR[.]LIBUSB_MINOR[.]LIBUSB_MICRO[]LIBUSB_RC],[libusb-devel@lists.sourceforge.net],[libusb],[http://libusb.info])
 
 # Library versioning
 # These numbers should be tweaked on every release. Read carefully:
 # http://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
 # http://sourceware.org/autobook/autobook/autobook_91.html
-lt_current="2"
+lt_current="1"
 lt_revision="0"
-lt_age="0"
+lt_age="1"
 LTLDFLAGS="-version-info ${lt_current}:${lt_revision}:${lt_age}"
 
 AM_INIT_AUTOMAKE([foreign subdir-objects])

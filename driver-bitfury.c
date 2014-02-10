@@ -12,6 +12,11 @@
 #include "miner.h"
 #include "driver-bitfury.h"
 #include "sha2.h"
+#include "mcp2210.h"
+#include "libbitfury.h"
+
+int opt_bxf_temp_target = BXF_TEMP_TARGET / 10;
+int opt_nf1_bits = 50;
 
 /* Wait longer 1/3 longer than it would take for a full nonce range */
 #define BF1WAIT 1600
@@ -144,6 +149,9 @@ static bool bxf_send_msg(struct cgpu_info *bitfury, char *buf, enum usb_cmds cmd
 {
 	int err, amount, len;
 
+	if (unlikely(bitfury->usbinfo.nodev))
+		return false;
+
 	len = strlen(buf);
 	applog(LOG_DEBUG, "%s %d: Sending %s", bitfury->drv->name, bitfury->device_id, buf);
 	err = usb_write(bitfury, buf, len, &amount, cmd);
@@ -231,6 +239,7 @@ static bool bxf_detect_one(struct cgpu_info *bitfury, struct bitfury_info *info)
 	       bitfury->drv->name, bitfury->device_id, bitfury->device_path);
 
 	info->total_nonces = 1;
+	info->temp_target = opt_bxf_temp_target * 10;
 	/* This unsets it to make sure it gets set on the first pass */
 	info->maxroll = -1;
 
@@ -270,6 +279,163 @@ out_close:
 	return false;
 }
 
+static void nf1_close(struct cgpu_info *bitfury)
+{
+	struct bitfury_info *info = bitfury->device_data;
+	struct mcp_settings *mcp = &info->mcp;
+	int i;
+
+	mcp2210_spi_cancel(bitfury);
+
+	/* Set all pins to input mode, ignoring return code */
+	for (i = 0; i < 9; i++) {
+		mcp->direction.pin[i] = MCP2210_GPIO_INPUT;
+		mcp->value.pin[i] = MCP2210_GPIO_PIN_LOW;
+	}
+	mcp2210_set_gpio_settings(bitfury, mcp);
+}
+
+static bool nf1_reinit(struct cgpu_info *bitfury, struct bitfury_info *info)
+{
+	spi_clear_buf(info);
+	spi_add_break(info);
+	spi_set_freq(info);
+	spi_send_conf(info);
+	spi_send_init(info);
+	spi_reset(bitfury, info);
+	return spi_txrx(bitfury, info);
+}
+
+static bool nf1_set_spi_settings(struct cgpu_info *bitfury, struct bitfury_info *info)
+{
+	struct mcp_settings *mcp = &info->mcp;
+
+	return mcp2210_set_spi_transfer_settings(bitfury, mcp->bitrate, mcp->icsv,
+		mcp->acsv, mcp->cstdd, mcp->ldbtcsd, mcp->sdbd, mcp->bpst, mcp->spimode);
+}
+
+static bool nf1_detect_one(struct cgpu_info *bitfury, struct bitfury_info *info)
+{
+	struct mcp_settings *mcp = &info->mcp;
+	char buf[MCP2210_BUFFER_LENGTH];
+	unsigned int length;
+	bool ret = false;
+	int i, val;
+
+	mcp2210_get_gpio_settings(bitfury, mcp);
+
+	for (i = 0; i < 9; i++) {
+		/* Set all pins to GPIO mode */
+		mcp->designation.pin[i] = MCP2210_PIN_GPIO;
+		/* Set all pins to input mode */
+		mcp->direction.pin[i] = MCP2210_GPIO_INPUT;
+		mcp->value.pin[i] = MCP2210_GPIO_PIN_LOW;
+	}
+
+	/* Set LED and PWR pins to output and high */
+	mcp->direction.pin[NF1_PIN_LED] = mcp->direction.pin[NF1_PIN_PWR_EN] = MCP2210_GPIO_OUTPUT;
+	mcp->value.pin[NF1_PIN_LED] = mcp->value.pin[NF1_PIN_PWR_EN] = MCP2210_GPIO_PIN_HIGH;
+
+	mcp->direction.pin[4] = MCP2210_GPIO_OUTPUT;
+	mcp->designation.pin[4] = MCP2210_PIN_CS;
+
+	if (!mcp2210_set_gpio_settings(bitfury, mcp))
+		goto out;
+
+	if (opt_debug) {
+		struct gpio_pin gp;
+
+		mcp2210_get_gpio_pindirs(bitfury, &gp);
+		for (i = 0; i < 9; i++) {
+			applog(LOG_DEBUG, "%s %d: Pin dir %d %d", bitfury->drv->name,
+			       bitfury->device_id, i, gp.pin[i]);
+		}
+		mcp2210_get_gpio_pinvals(bitfury, &gp);
+		for (i = 0; i < 9; i++) {
+			applog(LOG_DEBUG, "%s %d: Pin val %d %d", bitfury->drv->name,
+			       bitfury->device_id, i, gp.pin[i]);
+		}
+		mcp2210_get_gpio_pindes(bitfury, &gp);
+		for (i = 0; i < 9; i++) {
+			applog(LOG_DEBUG, "%s %d: Pin des %d %d", bitfury->drv->name,
+			       bitfury->device_id, i, gp.pin[i]);
+		}
+	}
+
+	/* Cancel any transfers in progress */
+	if (!mcp2210_spi_cancel(bitfury))
+		goto out;
+	if (!mcp2210_get_spi_transfer_settings(bitfury, &mcp->bitrate, &mcp->icsv,
+	    &mcp->acsv, &mcp->cstdd, &mcp->ldbtcsd, &mcp->sdbd, &mcp->bpst, &mcp->spimode))
+		goto out;
+	mcp->bitrate = 200000; // default to 200kHz
+	mcp->icsv = 0xffff;
+	mcp->acsv = 0xffef;
+	mcp->cstdd = mcp->ldbtcsd = mcp->sdbd = mcp->spimode = 0;
+	mcp->bpst = 1;
+	if (!nf1_set_spi_settings(bitfury, info))
+		goto out;
+
+	buf[0] = 0;
+	length = 1;
+	if (!mcp2210_spi_transfer(bitfury, mcp, buf, &length))
+		goto out;
+	/* after this command SCK_OVRRIDE should read the same as current SCK
+	 * value (which for mode 0 should be 0) */
+	if (!mcp2210_get_gpio_pinval(bitfury, NF1_PIN_SCK_OVR, &val))
+		goto out;
+	if (val != MCP2210_GPIO_PIN_LOW)
+		goto out;
+
+	/* switch SCK to polarity (default SCK=1 in mode 2) */
+	mcp->spimode = 2;
+	if (!nf1_set_spi_settings(bitfury, info))
+		goto out;
+	buf[0] = 0;
+	length = 1;
+	if (!mcp2210_spi_transfer(bitfury, mcp, buf, &length))
+		goto out;
+	/* after this command SCK_OVRRIDE should read the same as current SCK
+	 * value (which for mode 2 should be 1) */
+	if (!mcp2210_get_gpio_pinval(bitfury, NF1_PIN_SCK_OVR, &val))
+		goto out;
+	if (val != MCP2210_GPIO_PIN_HIGH)
+		goto out;
+
+	/* switch SCK to polarity (default SCK=0 in mode 0) */
+	mcp->spimode = 0;
+	if (!nf1_set_spi_settings(bitfury, info))
+		goto out;
+	buf[0] = 0;
+	length = 1;
+	if (!mcp2210_spi_transfer(bitfury, mcp, buf, &length))
+		goto out;
+	if (!mcp2210_get_gpio_pinval(bitfury, NF1_PIN_SCK_OVR, &val))
+		goto out;
+	if (val != MCP2210_GPIO_PIN_LOW)
+		goto out;
+
+	info->osc6_bits = opt_nf1_bits;
+	if (!nf1_reinit(bitfury, info))
+		goto out;
+
+	ret = true;
+	if (!add_cgpu(bitfury))
+		quit(1, "Failed to add_cgpu in nf1_detect_one");
+
+	update_usb_stats(bitfury);
+	applog(LOG_INFO, "%s %d: Successfully initialised %s",
+	bitfury->drv->name, bitfury->device_id, bitfury->device_path);
+	spi_clear_buf(info);
+
+	info->total_nonces = 1;
+out:
+	if (!ret)
+		nf1_close(bitfury);
+
+	return ret;
+}
+
 static struct cgpu_info *bitfury_detect_one(struct libusb_device *dev, struct usb_find_devices *found)
 {
 	struct cgpu_info *bitfury;
@@ -296,6 +462,9 @@ static struct cgpu_info *bitfury_detect_one(struct libusb_device *dev, struct us
 		case IDENT_BXF:
 			ret = bxf_detect_one(bitfury, info);
 			break;
+		case IDENT_NF1:
+			ret = nf1_detect_one(bitfury, info);
+			break;
 		default:
 			applog(LOG_INFO, "%s %d: Unrecognised bitfury device",
 			       bitfury->drv->name, bitfury->device_id);
@@ -321,13 +490,15 @@ static void parse_bxf_submit(struct cgpu_info *bitfury, struct bitfury_info *inf
 	struct work *match_work, *tmp, *work = NULL;
 	struct thr_info *thr = info->thr;
 	uint32_t nonce, timestamp;
-	int workid;
+	int workid, chip = -1;
 
-	if (!sscanf(&buf[7], "%x %x %x", &nonce, &workid, &timestamp)) {
+	if (!sscanf(&buf[7], "%x %x %x %d", &nonce, &workid, &timestamp, &chip)) {
 		applog(LOG_WARNING, "%s %d: Failed to parse submit response",
 		       bitfury->drv->name, bitfury->device_id);
 		return;
 	}
+	if (chip > -1 && chip < 2)
+		info->submits[chip]++;
 
 	applog(LOG_DEBUG, "%s %d: Parsed nonce %u workid %d timestamp %u",
 	       bitfury->drv->name, bitfury->device_id, nonce, workid, timestamp);
@@ -369,18 +540,82 @@ static void parse_bxf_submit(struct cgpu_info *bitfury, struct bitfury_info *inf
 	free_work(work);
 }
 
+static bool bxf_send_clock(struct cgpu_info *bitfury, struct bitfury_info *info,
+			   uint8_t clockspeed)
+{
+	char buf[64];
+
+	info->clocks = clockspeed;
+	sprintf(buf, "clock %d %d\n", clockspeed, clockspeed);
+	return bxf_send_msg(bitfury, buf, C_BXF_CLOCK);
+}
+
 static void parse_bxf_temp(struct cgpu_info *bitfury, struct bitfury_info *info, char *buf)
 {
-	unsigned int temp;
+	uint8_t clockspeed = info->clocks;
+	int decitemp;
 
-	if (!sscanf(&buf[5], "%u", &temp)) {
+	if (!sscanf(&buf[5], "%d", &decitemp)) {
 		applog(LOG_INFO, "%s %d: Failed to parse temperature",
 		       bitfury->drv->name, bitfury->device_id);
 		return;
 	}
+
 	mutex_lock(&info->lock);
-	info->temperature = (double)temp / 10;
+	info->temperature = (double)decitemp / 10;
+	if (decitemp > info->max_decitemp) {
+		info->max_decitemp = decitemp;
+		applog(LOG_DEBUG, "%s %d: New max decitemp %d", bitfury->drv->name,
+		       bitfury->device_id, decitemp);
+	}
 	mutex_unlock(&info->lock);
+
+	if (decitemp > info->temp_target + BXF_TEMP_HYSTERESIS) {
+		if (info->clocks <= BXF_CLOCK_MIN)
+			goto out;
+		applog(LOG_WARNING, "%s %d: Hit overheat temperature of %d, throttling!",
+		       bitfury->drv->name, bitfury->device_id, decitemp);
+		clockspeed = BXF_CLOCK_MIN;
+		goto out;
+	}
+	if (decitemp > info->temp_target) {
+		if (info->clocks <= BXF_CLOCK_MIN)
+			goto out;
+		if (decitemp < info->last_decitemp)
+			goto out;
+		applog(LOG_INFO, "%s %d: Temp %d over target and not falling, decreasing clock",
+		       bitfury->drv->name, bitfury->device_id, decitemp);
+		clockspeed = info->clocks - 1;
+		goto out;
+	}
+	if (decitemp <= info->temp_target && decitemp >= info->temp_target - BXF_TEMP_HYSTERESIS) {
+		if (decitemp == info->last_decitemp)
+			goto out;
+		if (decitemp > info->last_decitemp) {
+			if (info->clocks <= BXF_CLOCK_MIN)
+				goto out;
+			applog(LOG_DEBUG, "%s %d: Temp %d in target and rising, decreasing clock",
+			       bitfury->drv->name, bitfury->device_id, decitemp);
+			clockspeed = info->clocks - 1;
+			goto out;
+		}
+		/* implies: decitemp < info->last_decitemp */
+		if (info->clocks >= BXF_CLOCK_DEFAULT)
+			goto out;
+		applog(LOG_DEBUG, "%s %d: Temp %d in target and falling, increasing clock",
+		       bitfury->drv->name, bitfury->device_id, decitemp);
+		clockspeed = info->clocks + 1;
+		goto out;
+	}
+	/* implies: decitemp < info->temp_target - BXF_TEMP_HYSTERESIS */
+	if (info->clocks >= BXF_CLOCK_DEFAULT)
+		goto out;
+	applog(LOG_DEBUG, "%s %d: Temp %d below target, increasing clock",
+		bitfury->drv->name, bitfury->device_id, decitemp);
+	clockspeed = info->clocks + 1;
+out:
+	bxf_send_clock(bitfury, info, clockspeed);
+	info->last_decitemp = decitemp;
 }
 
 static void bxf_update_work(struct cgpu_info *bitfury, struct bitfury_info *info);
@@ -398,6 +633,47 @@ static void parse_bxf_needwork(struct cgpu_info *bitfury, struct bitfury_info *i
 	while (needed-- > 0)
 		bxf_update_work(bitfury, info);
 }
+
+static void parse_bxf_job(struct cgpu_info *bitfury, struct bitfury_info *info, char *buf)
+{
+	int job_id, timestamp, chip;
+
+	if (sscanf(&buf[4], "%x %x %x", &job_id, &timestamp, &chip) != 3) {
+		applog(LOG_INFO, "%s %d: Failed to parse job",
+		       bitfury->drv->name, bitfury->device_id);
+		return;
+	}
+	if (chip > 1) {
+		applog(LOG_INFO, "%s %d: Invalid job chip number %d",
+		       bitfury->drv->name, bitfury->device_id, chip);
+		return;
+	}
+	++info->job[chip];
+}
+
+static void parse_bxf_hwerror(struct cgpu_info *bitfury, struct bitfury_info *info, char *buf)
+{
+	int chip;
+
+	if (!sscanf(&buf[8], "%d", &chip)) {
+		applog(LOG_INFO, "%s %d: Failed to parse hwerror",
+		       bitfury->drv->name, bitfury->device_id);
+		return;
+	}
+	if (chip > 1) {
+		applog(LOG_INFO, "%s %d: Invalid hwerror chip number %d",
+		       bitfury->drv->name, bitfury->device_id, chip);
+		return;
+	}
+	++info->filtered_hw[chip];
+}
+
+#define PARSE_BXF_MSG(MSG) \
+	msg = strstr(buf, #MSG); \
+	if (msg) { \
+		parse_bxf_##MSG(bitfury, info, msg); \
+		continue; \
+	}
 
 static void *bxf_get_results(void *userdata)
 {
@@ -435,21 +711,12 @@ static void *bxf_get_results(void *userdata)
 		if (!err)
 			continue;
 
-		msg = strstr(buf, "submit");
-		if (msg) {
-			parse_bxf_submit(bitfury, info, msg);
-			continue;
-		}
-		msg = strstr(buf, "temp");
-		if (msg) {
-			parse_bxf_temp(bitfury, info, msg);
-			continue;
-		}
-		msg = strstr(buf, "needwork");
-		if (msg) {
-			parse_bxf_needwork(bitfury, info, msg);
-			continue;
-		}
+		PARSE_BXF_MSG(submit);
+		PARSE_BXF_MSG(temp);
+		PARSE_BXF_MSG(needwork);
+		PARSE_BXF_MSG(job);
+		PARSE_BXF_MSG(hwerror);
+
 		applog(LOG_DEBUG, "%s %d: Unrecognised string %s",
 		       bitfury->drv->name, bitfury->device_id, buf);
 	}
@@ -462,7 +729,7 @@ static bool bxf_prepare(struct cgpu_info *bitfury, struct bitfury_info *info)
 	mutex_init(&info->lock);
 	if (pthread_create(&info->read_thr, NULL, bxf_get_results, (void *)bitfury))
 		quit(1, "Failed to create bxf read_thr");
-	return true;
+	return bxf_send_clock(bitfury, info, BXF_CLOCK_DEFAULT);
 }
 
 static bool bitfury_prepare(struct thr_info *thr)
@@ -480,46 +747,6 @@ static bool bitfury_prepare(struct thr_info *thr)
 		default:
 			return true;
 	}
-}
-
-static uint32_t decnonce(uint32_t in)
-{
-	uint32_t out;
-
-	/* First part load */
-	out = (in & 0xFF) << 24; in >>= 8;
-
-	/* Byte reversal */
-	in = (((in & 0xaaaaaaaa) >> 1) | ((in & 0x55555555) << 1));
-	in = (((in & 0xcccccccc) >> 2) | ((in & 0x33333333) << 2));
-	in = (((in & 0xf0f0f0f0) >> 4) | ((in & 0x0f0f0f0f) << 4));
-
-	out |= (in >> 2)&0x3FFFFF;
-
-	/* Extraction */
-	if (in & 1) out |= (1 << 23);
-	if (in & 2) out |= (1 << 22);
-
-	out -= 0x800004;
-	return out;
-}
-
-#define BT_OFFSETS 3
-const uint32_t bf_offsets[] = {-0x800000, 0, -0x400000};
-
-static bool bitfury_checkresults(struct thr_info *thr, struct work *work, uint32_t nonce)
-{
-	int i;
-
-	for (i = 0; i < BT_OFFSETS; i++) {
-		uint32_t noffset = nonce + bf_offsets[i];
-
-		if (test_nonce(work, noffset)) {
-			submit_tested_work(thr, work);
-			return true;
-		}
-	}
-	return false;
 }
 
 static int64_t bitfury_rate(struct bitfury_info *info)
@@ -675,6 +902,41 @@ static int64_t bxf_scan(struct cgpu_info *bitfury, struct bitfury_info *info)
 	return ret;
 }
 
+static int64_t nf1_scan(struct thr_info *thr, struct cgpu_info *bitfury,
+			struct bitfury_info *info)
+{
+	int64_t ret = 0;
+
+	if (!info->work) {
+		info->work = get_work(thr, thr->id);
+		if (unlikely(thr->work_restart)) {
+			free_work(info->work);
+			info->work = NULL;
+			return 0;
+		}
+		bitfury_work_to_payload(&info->payload, info->work);
+	}
+	if (!libbitfury_sendHashData(thr, bitfury, info))
+		return -1;
+
+	if (info->job_switched) {
+		if (likely(info->owork))
+			free_work(info->owork);
+		info->owork = info->work;
+		info->work = NULL;
+	}
+
+	ret = bitfury_rate(info);
+
+	if (unlikely(bitfury->usbinfo.nodev)) {
+		applog(LOG_WARNING, "%s %d: Device disappeared, disabling thread",
+		       bitfury->drv->name, bitfury->device_id);
+		ret = -1;
+	}
+
+	return ret;
+}
+
 static int64_t bitfury_scanwork(struct thr_info *thr)
 {
 	struct cgpu_info *bitfury = thr->cgpu;
@@ -683,10 +945,10 @@ static int64_t bitfury_scanwork(struct thr_info *thr)
 	switch(info->ident) {
 		case IDENT_BF1:
 			return bf1_scan(thr, bitfury, info);
-			break;
 		case IDENT_BXF:
 			return bxf_scan(bitfury, info);
-			break;
+		case IDENT_NF1:
+			return nf1_scan(thr, bitfury, info);
 		default:
 			return 0;
 	}
@@ -713,6 +975,9 @@ static void bxf_update_work(struct cgpu_info *bitfury, struct bitfury_info *info
 {
 	struct thr_info *thr = info->thr;
 	struct work *work;
+
+	if (unlikely(bitfury->usbinfo.nodev))
+		return;
 
 	work = get_queue_work(thr, bitfury, thr->id);
 	if (work->drv_rolllimit != info->maxroll) {
@@ -787,6 +1052,15 @@ static struct api_data *bxf_api_stats(struct bitfury_info *info)
 	nonce_rate = (double)info->total_nonces / (double)info->cycles;
 	root = api_add_double(root, "NonceRate", &nonce_rate, true);
 	root = api_add_int(root, "NoMatchingWork", &info->no_matching_work, false);
+	root = api_add_double(root, "Temperature", &info->temperature, false);
+	root = api_add_int(root, "Max DeciTemp", &info->max_decitemp, false);
+	root = api_add_uint8(root, "Clock", &info->clocks, false);
+	root = api_add_int(root, "Core0 hwerror", &info->filtered_hw[0], false);
+	root = api_add_int(root, "Core1 hwerror", &info->filtered_hw[1], false);
+	root = api_add_int(root, "Core0 jobs", &info->job[0], false);
+	root = api_add_int(root, "Core1 jobs", &info->job[1], false);
+	root = api_add_int(root, "Core0 submits", &info->submits[0], false);
+	root = api_add_int(root, "Core1 submits", &info->submits[1], false);
 
 	return root;
 }
@@ -861,6 +1135,9 @@ static void bitfury_shutdown(struct thr_info *thr)
 			break;
 		case IDENT_BXF:
 			bxf_close(info);
+			break;
+		case IDENT_NF1:
+			nf1_close(bitfury);
 			break;
 		default:
 			break;

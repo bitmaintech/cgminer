@@ -47,43 +47,6 @@
 #define DEFAULT_SOCKWAIT 60
 
 bool successful_connect = false;
-
-unsigned char bit_swap_table[256] =
-{
-  0x00, 0x80, 0x40, 0xc0, 0x20, 0xa0, 0x60, 0xe0,
-  0x10, 0x90, 0x50, 0xd0, 0x30, 0xb0, 0x70, 0xf0,
-  0x08, 0x88, 0x48, 0xc8, 0x28, 0xa8, 0x68, 0xe8,
-  0x18, 0x98, 0x58, 0xd8, 0x38, 0xb8, 0x78, 0xf8,
-  0x04, 0x84, 0x44, 0xc4, 0x24, 0xa4, 0x64, 0xe4,
-  0x14, 0x94, 0x54, 0xd4, 0x34, 0xb4, 0x74, 0xf4,
-  0x0c, 0x8c, 0x4c, 0xcc, 0x2c, 0xac, 0x6c, 0xec,
-  0x1c, 0x9c, 0x5c, 0xdc, 0x3c, 0xbc, 0x7c, 0xfc,
-  0x02, 0x82, 0x42, 0xc2, 0x22, 0xa2, 0x62, 0xe2,
-  0x12, 0x92, 0x52, 0xd2, 0x32, 0xb2, 0x72, 0xf2,
-  0x0a, 0x8a, 0x4a, 0xca, 0x2a, 0xaa, 0x6a, 0xea,
-  0x1a, 0x9a, 0x5a, 0xda, 0x3a, 0xba, 0x7a, 0xfa,
-  0x06, 0x86, 0x46, 0xc6, 0x26, 0xa6, 0x66, 0xe6,
-  0x16, 0x96, 0x56, 0xd6, 0x36, 0xb6, 0x76, 0xf6,
-  0x0e, 0x8e, 0x4e, 0xce, 0x2e, 0xae, 0x6e, 0xee,
-  0x1e, 0x9e, 0x5e, 0xde, 0x3e, 0xbe, 0x7e, 0xfe,
-  0x01, 0x81, 0x41, 0xc1, 0x21, 0xa1, 0x61, 0xe1,
-  0x11, 0x91, 0x51, 0xd1, 0x31, 0xb1, 0x71, 0xf1,
-  0x09, 0x89, 0x49, 0xc9, 0x29, 0xa9, 0x69, 0xe9,
-  0x19, 0x99, 0x59, 0xd9, 0x39, 0xb9, 0x79, 0xf9,
-  0x05, 0x85, 0x45, 0xc5, 0x25, 0xa5, 0x65, 0xe5,
-  0x15, 0x95, 0x55, 0xd5, 0x35, 0xb5, 0x75, 0xf5,
-  0x0d, 0x8d, 0x4d, 0xcd, 0x2d, 0xad, 0x6d, 0xed,
-  0x1d, 0x9d, 0x5d, 0xdd, 0x3d, 0xbd, 0x7d, 0xfd,
-  0x03, 0x83, 0x43, 0xc3, 0x23, 0xa3, 0x63, 0xe3,
-  0x13, 0x93, 0x53, 0xd3, 0x33, 0xb3, 0x73, 0xf3,
-  0x0b, 0x8b, 0x4b, 0xcb, 0x2b, 0xab, 0x6b, 0xeb,
-  0x1b, 0x9b, 0x5b, 0xdb, 0x3b, 0xbb, 0x7b, 0xfb,
-  0x07, 0x87, 0x47, 0xc7, 0x27, 0xa7, 0x67, 0xe7,
-  0x17, 0x97, 0x57, 0xd7, 0x37, 0xb7, 0x77, 0xf7,
-  0x0f, 0x8f, 0x4f, 0xcf, 0x2f, 0xaf, 0x6f, 0xef,
-  0x1f, 0x9f, 0x5f, 0xdf, 0x3f, 0xbf, 0x7f, 0xff,
-};
-
 static void keep_sockalive(SOCKETTYPE fd)
 {
 	const int tcp_one = 1;
@@ -1296,11 +1259,14 @@ static enum send_ret __stratum_send(struct pool *pool, char *s, ssize_t len)
 		struct timeval timeout = {1, 0};
 		ssize_t sent;
 		fd_set wd;
-
+retry:
 		FD_ZERO(&wd);
 		FD_SET(sock, &wd);
-		if (select(sock + 1, NULL, &wd, NULL, &timeout) < 1)
+		if (select(sock + 1, NULL, &wd, NULL, &timeout) < 1) {
+			if (interrupted())
+				goto retry;
 			return SEND_SELECTFAIL;
+		}
 #ifdef __APPLE__
 		sent = send(pool->sock, s + ssent, len, SO_NOSIGPIPE);
 #elif WIN32
@@ -1693,7 +1659,7 @@ static bool parse_diff(struct pool *pool, json_t *val)
 			applog(LOG_NOTICE, "Pool %d difficulty changed to %d",
 			       pool->pool_no, idiff);
 		else
-			applog(LOG_NOTICE, "Pool %d difficulty changed to %f",
+			applog(LOG_NOTICE, "Pool %d difficulty changed to %.1f",
 			       pool->pool_no, diff);
 	} else
 		applog(LOG_DEBUG, "Pool %d difficulty set to %f", pool->pool_no,
@@ -1702,8 +1668,18 @@ static bool parse_diff(struct pool *pool, json_t *val)
 	return true;
 }
 
+static void __suspend_stratum(struct pool *pool)
+{
+	clear_sockbuf(pool);
+	pool->stratum_active = pool->stratum_notify = false;
+	if (pool->sock)
+		CLOSESOCKET(pool->sock);
+	pool->sock = 0;
+}
+
 static bool parse_reconnect(struct pool *pool, json_t *val)
 {
+	char *sockaddr_url, *stratum_port, *tmp;
 	char *url, *port, address[256];
 
 	memset(address, 0, 255);
@@ -1717,12 +1693,23 @@ static bool parse_reconnect(struct pool *pool, json_t *val)
 
 	sprintf(address, "%s:%s", url, port);
 
-	if (!extract_sockaddr(address, &pool->sockaddr_url, &pool->stratum_port))
+	if (!extract_sockaddr(address, &sockaddr_url, &stratum_port))
 		return false;
 
-	pool->stratum_url = pool->sockaddr_url;
-
 	applog(LOG_NOTICE, "Reconnect requested from pool %d to %s", pool->pool_no, address);
+
+	clear_pool_work(pool);
+
+	mutex_lock(&pool->stratum_lock);
+	__suspend_stratum(pool);
+	tmp = pool->sockaddr_url;
+	pool->sockaddr_url = sockaddr_url;
+	pool->stratum_url = pool->sockaddr_url;
+	free(tmp);
+	tmp = pool->stratum_port;
+	pool->stratum_port = stratum_port;
+	free(tmp);
+	mutex_unlock(&pool->stratum_lock);
 
 	if (!restart_stratum(pool))
 		return false;
@@ -2193,6 +2180,7 @@ static bool setup_stratum_socket(struct pool *pool)
 				applog(LOG_DEBUG, "Failed sock connect");
 				continue;
 			}
+retry:
 			FD_ZERO(&rw);
 			FD_SET(sockd, &rw);
 			selret = select(sockd + 1, NULL, &rw, NULL, &tv_timeout);
@@ -2208,6 +2196,8 @@ static bool setup_stratum_socket(struct pool *pool)
 					break;
 				}
 			}
+			if (selret < 0 && interrupted())
+				goto retry;
 			CLOSESOCKET(sockd);
 			applog(LOG_DEBUG, "Select timeout/failed connect");
 			continue;
@@ -2298,14 +2288,10 @@ out:
 
 void suspend_stratum(struct pool *pool)
 {
-	clear_sockbuf(pool);
 	applog(LOG_INFO, "Closing socket for stratum pool %d", pool->pool_no);
 
 	mutex_lock(&pool->stratum_lock);
-	pool->stratum_active = pool->stratum_notify = false;
-	if (pool->sock)
-		CLOSESOCKET(pool->sock);
-	pool->sock = 0;
+	__suspend_stratum(pool);
 	mutex_unlock(&pool->stratum_lock);
 }
 
@@ -2553,16 +2539,19 @@ void *str_text(char *ptr)
 
 void RenameThread(const char* name)
 {
+	char buf[16];
+
+	snprintf(buf, sizeof(buf), "cg@%s", name);
 #if defined(PR_SET_NAME)
 	// Only the first 15 characters are used (16 - NUL terminator)
-	prctl(PR_SET_NAME, name, 0, 0, 0);
+	prctl(PR_SET_NAME, buf, 0, 0, 0);
 #elif (defined(__FreeBSD__) || defined(__OpenBSD__))
-	pthread_set_name_np(pthread_self(), name);
+	pthread_set_name_np(pthread_self(), buf);
 #elif defined(MAC_OSX)
-	pthread_setname_np(name);
+	pthread_setname_np(buf);
 #else
-	// Prevent warnings for unused parameters...
-	(void)name;
+	// Prevent warnings
+	(void)buf;
 #endif
 }
 
@@ -2593,19 +2582,24 @@ void _cgsem_post(cgsem_t *cgsem, const char *file, const char *func, const int l
 	const char buf = 1;
 	int ret;
 
+retry:
 	ret = write(cgsem->pipefd[1], &buf, 1);
 	if (unlikely(ret == 0))
 		applog(LOG_WARNING, "Failed to write errno=%d" IN_FMT_FFL, errno, file, func, line);
+	else if (unlikely(ret < 0 && interrupted))
+		goto retry;
 }
 
 void _cgsem_wait(cgsem_t *cgsem, const char *file, const char *func, const int line)
 {
 	char buf;
 	int ret;
-
+retry:
 	ret = read(cgsem->pipefd[0], &buf, 1);
 	if (unlikely(ret == 0))
 		applog(LOG_WARNING, "Failed to read errno=%d" IN_FMT_FFL, errno, file, func, line);
+	else if (unlikely(ret < 0 && interrupted))
+		goto retry;
 }
 
 void cgsem_destroy(cgsem_t *cgsem)
@@ -2622,6 +2616,7 @@ int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, co
 	fd_set rd;
 	char buf;
 
+retry:
 	fd = cgsem->pipefd[0];
 	FD_ZERO(&rd);
 	FD_SET(fd, &rd);
@@ -2634,6 +2629,8 @@ int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, co
 	}
 	if (likely(!ret))
 		return ETIMEDOUT;
+	if (interrupted())
+		goto retry;
 	quitfrom(1, file, func, line, "Failed to sem_timedwait errno=%d cgsem=0x%p", errno, cgsem);
 	/* We don't reach here */
 	return 0;
@@ -2655,6 +2652,8 @@ void cgsem_reset(cgsem_t *cgsem)
 		ret = select(fd + 1, &rd, NULL, NULL, &timeout);
 		if (ret > 0)
 			ret = read(fd, &buf, 1);
+		else if (unlikely(ret < 0 && interrupted()))
+			ret = 1;
 	} while (ret > 0);
 }
 #else
@@ -2673,8 +2672,12 @@ void _cgsem_post(cgsem_t *cgsem, const char *file, const char *func, const int l
 
 void _cgsem_wait(cgsem_t *cgsem, const char *file, const char *func, const int line)
 {
-	if (unlikely(sem_wait(cgsem)))
+retry:
+	if (unlikely(sem_wait(cgsem))) {
+		if (interrupted())
+			goto retry;
 		quitfrom(1, file, func, line, "Failed to sem_wait errno=%d cgsem=0x%p", errno, cgsem);
+	}
 }
 
 int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, const int line)
@@ -2686,12 +2689,15 @@ int _cgsem_mswait(cgsem_t *cgsem, int ms, const char *file, const char *func, co
 	cgtime(&tv_now);
 	timeval_to_spec(&ts_now, &tv_now);
 	ms_to_timespec(&abs_timeout, ms);
+retry:
 	timeraddspec(&abs_timeout, &ts_now);
 	ret = sem_timedwait(cgsem, &abs_timeout);
 
 	if (ret) {
 		if (likely(sock_timeout()))
 			return ETIMEDOUT;
+		if (interrupted())
+			goto retry;
 		quitfrom(1, file, func, line, "Failed to sem_timedwait errno=%d cgsem=0x%p", errno, cgsem);
 	}
 	return 0;
@@ -2703,6 +2709,8 @@ void cgsem_reset(cgsem_t *cgsem)
 
 	do {
 		ret = sem_trywait(cgsem);
+		if (unlikely(ret < 0 && interrupted()))
+			ret = 0;
 	} while (!ret);
 }
 

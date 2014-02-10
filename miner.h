@@ -35,6 +35,14 @@ extern char *curly;
 #include <semaphore.h>
 #endif
 
+#ifdef HAVE_OPENCL
+#ifdef __APPLE_CC__
+#include <OpenCL/opencl.h>
+#else
+#include <CL/cl.h>
+#endif
+#endif /* HAVE_OPENCL */
+
 #ifdef STDC_HEADERS
 # include <stdlib.h>
 # include <stddef.h>
@@ -115,6 +123,10 @@ static inline int fsync (int fd)
 #endif
 
 
+#ifdef HAVE_ADL
+ #include "ADL_SDK/adl_sdk.h"
+#endif
+
 #ifdef USE_USBUTILS
   #include <libusb.h>
 #endif
@@ -155,16 +167,10 @@ static inline int fsync (int fd)
 #endif
 #endif /* !defined(__GLXBYTEORDER_H__) */
 
-#ifndef bswap_8
-extern unsigned char bit_swap_table[256];
-#define bswap_8(x) (bit_swap_table[x])
-#endif
-
 /* This assumes htobe32 is a macro in endian.h, and if it doesn't exist, then
  * htobe64 also won't exist */
 #ifndef htobe32
 # if __BYTE_ORDER == __LITTLE_ENDIAN
-#  define htole8(x) (x)
 #  define htole16(x) (x)
 #  define htole32(x) (x)
 #  define htole64(x) (x)
@@ -175,7 +181,6 @@ extern unsigned char bit_swap_table[256];
 #  define htobe32(x) bswap_32(x)
 #  define htobe64(x) bswap_64(x)
 # elif __BYTE_ORDER == __BIG_ENDIAN
-#  define htole8(x) bswap_8(x)
 #  define htole16(x) bswap_16(x)
 #  define htole32(x) bswap_32(x)
 #  define le32toh(x) bswap_32(x)
@@ -188,17 +193,6 @@ extern unsigned char bit_swap_table[256];
 #else
 #error UNKNOWN BYTE ORDER
 #endif
-
-#else
-
-# if __BYTE_ORDER == __LITTLE_ENDIAN
-#  define htole8(x) (x)
-# elif __BYTE_ORDER == __BIG_ENDIAN
-#  define htole8(x) bswap_8(x)
-#else
-#error UNKNOWN BYTE ORDER
-#endif
-
 #endif
 
 #undef unlikely
@@ -247,7 +241,6 @@ extern unsigned char bit_swap_table[256];
 #define FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
 	DRIVER_ADD_COMMAND(bitforce) \
 	DRIVER_ADD_COMMAND(icarus) \
-	DRIVER_ADD_COMMAND(bmsc) \
 	DRIVER_ADD_COMMAND(modminer)
 
 #define ASIC_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
@@ -256,11 +249,13 @@ extern unsigned char bit_swap_table[256];
 	DRIVER_ADD_COMMAND(hashfast) \
 	DRIVER_ADD_COMMAND(klondike) \
 	DRIVER_ADD_COMMAND(knc) \
+	DRIVER_ADD_COMMAND(drillbit) \
 	DRIVER_ADD_COMMAND(bab) \
-	DRIVER_ADD_COMMAND(avalon) \
-	DRIVER_ADD_COMMAND(bitmain)
+	DRIVER_ADD_COMMAND(minion) \
+	DRIVER_ADD_COMMAND(avalon)
 
 #define DRIVER_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
+	DRIVER_ADD_COMMAND(opencl) \
 	FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
 	ASIC_PARSE_COMMANDS(DRIVER_ADD_COMMAND)
 
@@ -300,6 +295,53 @@ struct strategies {
 };
 
 struct cgpu_info;
+
+#ifdef HAVE_ADL
+struct gpu_adl {
+	ADLTemperature lpTemperature;
+	int iAdapterIndex;
+	int lpAdapterID;
+	int iBusNumber;
+	char strAdapterName[256];
+
+	ADLPMActivity lpActivity;
+	ADLODParameters lpOdParameters;
+	ADLODPerformanceLevels *DefPerfLev;
+	ADLFanSpeedInfo lpFanSpeedInfo;
+	ADLFanSpeedValue lpFanSpeedValue;
+	ADLFanSpeedValue DefFanSpeedValue;
+
+	int iEngineClock;
+	int iMemoryClock;
+	int iVddc;
+	int iPercentage;
+
+	bool autofan;
+	bool autoengine;
+	bool managed; /* Were the values ever changed on this card */
+
+	int lastengine;
+	int lasttemp;
+	int targetfan;
+	int targettemp;
+	int overtemp;
+	int minspeed;
+	int maxspeed;
+
+	int gpu;
+	bool has_fanspeed;
+	struct gpu_adl *twin;
+};
+#endif
+
+enum cl_kernels {
+	KL_NONE,
+	KL_POCLBM,
+	KL_PHATK,
+	KL_DIAKGCN,
+	KL_DIABLO,
+	KL_SCRYPT,
+};
 
 extern void blank_get_statline_before(char *buf, size_t bufsiz, struct cgpu_info __maybe_unused *cgpu);
 
@@ -351,6 +393,9 @@ struct device_drv {
 	void (*hw_error)(struct thr_info *);
 	void (*thread_shutdown)(struct thr_info *);
 	void (*thread_enable)(struct thr_info *);
+
+	/* What should be zeroed in this device when global zero stats is sent */
+	void (*zero_stats)(struct cgpu_info *);
 
 	// Does it need to be free()d?
 	bool copy;
@@ -444,13 +489,6 @@ struct cgpu_info {
 	int queued;
 	int results;
 #endif
-#ifdef USE_BITMAIN
-	int device_fd;
-	struct work **works;
-	int work_array;
-	int queued;
-	int results;
-#endif
 #ifdef USE_USBUTILS
 	struct cg_usb_info usbinfo;
 #endif
@@ -490,12 +528,45 @@ struct cgpu_info {
 	int64_t max_hashes;
 
 	const char *kname;
+#ifdef HAVE_OPENCL
+	bool mapped;
+	int virtual_gpu;
+	int virtual_adl;
+	int intensity;
+	bool dynamic;
+
+	cl_uint vwidth;
+	size_t work_size;
+	enum cl_kernels kernel;
+	cl_ulong max_alloc;
+
+#ifdef USE_SCRYPT
+	int opt_lg, lookup_gap;
+	size_t opt_tc, thread_concurrency;
+	size_t shaders;
+#endif
+	struct timeval tv_gpustart;
+	int intervals;
+#endif
 
 	bool new_work;
 
 	float temp;
 	int cutofftemp;
 
+#ifdef HAVE_ADL
+	bool has_adl;
+	struct gpu_adl adl;
+
+	int gpu_engine;
+	int min_engine;
+	int gpu_fan;
+	int min_fan;
+	int gpu_memclock;
+	int gpu_memdiff;
+	int gpu_powertune;
+	float gpu_vddc;
+#endif
 	int diff1;
 	double diff_accepted;
 	double diff_rejected;
@@ -685,6 +756,7 @@ endian_flip128(void __maybe_unused *dest_p, const void __maybe_unused *src_p)
 }
 #endif
 
+extern double cgpu_runtime(struct cgpu_info *cgpu);
 extern void _quit(int status);
 
 /*
@@ -970,25 +1042,26 @@ extern int opt_api_port;
 extern bool opt_api_listen;
 extern bool opt_api_network;
 extern bool opt_delaynet;
+extern time_t last_getwork;
 extern bool opt_restart;
+#ifdef USE_ICARUS
 extern char *opt_icarus_options;
 extern char *opt_icarus_timing;
-extern char *opt_bmsc_options;
-extern char *opt_bmsc_timing;
-extern char *opt_bmsc_freq;
-extern char *opt_bmsc_rdreg;
-extern bool opt_bmsc_rdworktest;
+extern int opt_anu_freq;
+#endif
 extern bool opt_worktime;
 #ifdef USE_AVALON
 extern char *opt_avalon_options;
 extern char *opt_bitburner_fury_options;
 #endif
-#ifdef USE_BITMAIN
-extern char *opt_bitmain_options;
-extern bool opt_bitmain_hwerror;
-#endif
 #ifdef USE_KLONDIKE
 extern char *opt_klondike_options;
+#endif
+#ifdef USE_DRILLBIT
+extern char *opt_drillbit_options;
+#endif
+#ifdef USE_BAB
+extern char *opt_bab_options;
 #endif
 #ifdef USE_USBUTILS
 extern char *opt_usb_select;
@@ -1044,12 +1117,23 @@ extern pthread_mutex_t restart_lock;
 extern pthread_cond_t restart_cond;
 
 extern void clear_stratum_shares(struct pool *pool);
+extern void clear_pool_work(struct pool *pool);
 extern void set_target(unsigned char *dest_target, double diff);
 extern int restart_wait(struct thr_info *thr, unsigned int mstime);
 
 extern void kill_work(void);
 
 extern void reinit_device(struct cgpu_info *cgpu);
+
+extern bool opt_nogpu;
+
+#ifdef HAVE_ADL
+extern bool gpu_stats(int gpu, float *temp, int *engineclock, int *memclock, float *vddc, int *activity, int *fanspeed, int *fanpercent, int *powertune);
+extern int set_fanspeed(int gpu, int iFanSpeed);
+extern int set_vddc(int gpu, float fVddc);
+extern int set_engineclock(int gpu, int iEngineClock);
+extern int set_memoryclock(int gpu, int iMemoryClock);
+#endif
 
 extern void api(int thr_id);
 
@@ -1063,6 +1147,30 @@ extern struct pool *add_pool(void);
 extern bool add_pool_details(struct pool *pool, bool live, char *url, char *user, char *pass);
 
 #define MAX_DEVICES 4096
+
+#define MAX_GPUDEVICES 16
+
+#define MIN_SHA_INTENSITY -10
+#define MIN_SHA_INTENSITY_STR "-10"
+#define MAX_SHA_INTENSITY 14
+#define MAX_SHA_INTENSITY_STR "14"
+#define MIN_SCRYPT_INTENSITY 8
+#define MIN_SCRYPT_INTENSITY_STR "8"
+#define MAX_SCRYPT_INTENSITY 20
+#define MAX_SCRYPT_INTENSITY_STR "20"
+#ifdef USE_SCRYPT
+#define MIN_INTENSITY (opt_scrypt ? MIN_SCRYPT_INTENSITY : MIN_SHA_INTENSITY)
+#define MIN_INTENSITY_STR (opt_scrypt ? MIN_SCRYPT_INTENSITY_STR : MIN_SHA_INTENSITY_STR)
+#define MAX_INTENSITY (opt_scrypt ? MAX_SCRYPT_INTENSITY : MAX_SHA_INTENSITY)
+#define MAX_INTENSITY_STR (opt_scrypt ? MAX_SCRYPT_INTENSITY_STR : MAX_SHA_INTENSITY_STR)
+#define MAX_GPU_INTENSITY MAX_SCRYPT_INTENSITY
+#else
+#define MIN_INTENSITY MIN_SHA_INTENSITY
+#define MIN_INTENSITY_STR MIN_SHA_INTENSITY_STR
+#define MAX_INTENSITY MAX_SHA_INTENSITY
+#define MAX_INTENSITY_STR MAX_SHA_INTENSITY_STR
+#define MAX_GPU_INTENSITY MAX_SHA_INTENSITY
+#endif
 
 extern bool hotplug_mode;
 extern int hotplug_time;
@@ -1086,7 +1194,6 @@ extern enum pool_strategy pool_strategy;
 extern int opt_rotate_period;
 extern double total_rolling;
 extern double total_mhashes_done;
-extern double g_displayed_rolling;
 extern unsigned int new_blocks;
 extern unsigned int found_blocks;
 extern int total_accepted, total_rejected, total_diff1;;
@@ -1103,6 +1210,43 @@ extern uint64_t best_diff;
 extern struct timeval block_timeval;
 extern char *workpadding;
 
+extern struct cgpu_info gpus[MAX_GPUDEVICES];
+extern int gpu_threads;
+extern bool opt_scrypt;
+
+#ifdef HAVE_OPENCL
+typedef struct {
+	cl_uint ctx_a; cl_uint ctx_b; cl_uint ctx_c; cl_uint ctx_d;
+	cl_uint ctx_e; cl_uint ctx_f; cl_uint ctx_g; cl_uint ctx_h;
+	cl_uint cty_a; cl_uint cty_b; cl_uint cty_c; cl_uint cty_d;
+	cl_uint cty_e; cl_uint cty_f; cl_uint cty_g; cl_uint cty_h;
+	cl_uint merkle; cl_uint ntime; cl_uint nbits; cl_uint nonce;
+	cl_uint fW0; cl_uint fW1; cl_uint fW2; cl_uint fW3; cl_uint fW15;
+	cl_uint fW01r; cl_uint fcty_e; cl_uint fcty_e2;
+	cl_uint W16; cl_uint W17; cl_uint W2;
+	cl_uint PreVal4; cl_uint T1;
+	cl_uint C1addK5; cl_uint D1A; cl_uint W2A; cl_uint W17_2;
+	cl_uint PreVal4addT1; cl_uint T1substate0;
+	cl_uint PreVal4_2;
+	cl_uint PreVal0;
+	cl_uint PreW18;
+	cl_uint PreW19;
+	cl_uint PreW31;
+	cl_uint PreW32;
+
+	/* For diakgcn */
+	cl_uint B1addK6, PreVal0addK7, W16addK16, W17addK17;
+	cl_uint zeroA, zeroB;
+	cl_uint oneA, twoA, threeA, fourA, fiveA, sixA, sevenA;
+#ifdef USE_SCRYPT
+	struct work *work;
+#endif
+} dev_blk_ctx;
+#else
+typedef struct {
+	uint32_t nonce;
+} dev_blk_ctx;
+#endif
 struct curl_ent {
 	CURL *curl;
 	struct list_head node;
@@ -1220,7 +1364,7 @@ struct pool {
 	char *nonce1;
 	unsigned char *nonce1bin;
 	size_t n1_len;
-	uint32_t nonce2;
+	uint64_t nonce2;
 	int n2size;
 	char *sessionid;
 	bool has_stratum;
@@ -1296,7 +1440,7 @@ struct work {
 
 	bool		stratum;
 	char 		*job_id;
-	uint32_t	nonce2;
+	uint64_t	nonce2;
 	size_t		nonce2_len;
 	char		*ntime;
 	double		sdiff;
@@ -1325,6 +1469,7 @@ struct work {
 	struct timeval	tv_work_start;
 	struct timeval	tv_work_found;
 	char		getwork_mode;
+	dev_blk_ctx	blk;
 };
 
 #ifdef USE_MODMINER 
@@ -1371,11 +1516,10 @@ extern void get_datestamp(char *, size_t, struct timeval *);
 extern void inc_hw_errors(struct thr_info *thr);
 extern bool test_nonce(struct work *work, uint32_t nonce);
 extern bool test_nonce_diff(struct work *work, uint32_t nonce, double diff);
-extern void submit_tested_work(struct thr_info *thr, struct work *work);
+extern bool submit_tested_work(struct thr_info *thr, struct work *work);
 extern bool submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce);
-extern bool submit_nonce_1(struct thr_info *thr, struct work *work, uint32_t nonce, int * nofull);
-extern void submit_nonce_2(struct work *work);
-extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce, int noffset);
+extern bool submit_noffset_nonce(struct thr_info *thr, struct work *work, uint32_t nonce,
+			  int noffset);
 extern struct work *get_work(struct thr_info *thr, const int thr_id);
 extern void __add_queued(struct cgpu_info *cgpu, struct work *work);
 extern struct work *get_queued(struct cgpu_info *cgpu);
@@ -1384,13 +1528,11 @@ extern struct work *get_queue_work(struct thr_info *thr, struct cgpu_info *cgpu,
 extern struct work *__find_work_bymidstate(struct work *que, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *find_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *clone_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
-extern struct work *__find_work_byid(struct work *que, uint32_t id);
-extern struct work *find_queued_work_byid(struct cgpu_info *cgpu, uint32_t id);
-extern struct work *clone_queued_work_byid(struct cgpu_info *cgpu, uint32_t id);
 extern void __work_completed(struct cgpu_info *cgpu, struct work *work);
 extern int age_queued_work(struct cgpu_info *cgpu, double secs);
 extern void work_completed(struct cgpu_info *cgpu, struct work *work);
 extern struct work *take_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
+extern void flush_queue(struct cgpu_info *cgpu);
 extern void hash_driver_work(struct thr_info *mythr);
 extern void hash_queued_work(struct thr_info *mythr);
 extern void _wlog(const char *str);
@@ -1435,6 +1577,7 @@ enum api_data_type {
 	API_INT,
 	API_UINT,
 	API_UINT32,
+	API_HEX32,
 	API_UINT64,
 	API_DOUBLE,
 	API_ELAPSED,
@@ -1449,7 +1592,8 @@ enum api_data_type {
 	API_VOLTS,
 	API_HS,
 	API_DIFF,
-	API_PERCENT
+	API_PERCENT,
+	API_AVG
 };
 
 struct api_data {
@@ -1469,6 +1613,7 @@ extern struct api_data *api_add_uint16(struct api_data *root, char *name, uint16
 extern struct api_data *api_add_int(struct api_data *root, char *name, int *data, bool copy_data);
 extern struct api_data *api_add_uint(struct api_data *root, char *name, unsigned int *data, bool copy_data);
 extern struct api_data *api_add_uint32(struct api_data *root, char *name, uint32_t *data, bool copy_data);
+extern struct api_data *api_add_hex32(struct api_data *root, char *name, uint32_t *data, bool copy_data);
 extern struct api_data *api_add_uint64(struct api_data *root, char *name, uint64_t *data, bool copy_data);
 extern struct api_data *api_add_double(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_elapsed(struct api_data *root, char *name, double *data, bool copy_data);
@@ -1484,5 +1629,6 @@ extern struct api_data *api_add_volts(struct api_data *root, char *name, float *
 extern struct api_data *api_add_hs(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_diff(struct api_data *root, char *name, double *data, bool copy_data);
 extern struct api_data *api_add_percent(struct api_data *root, char *name, double *data, bool copy_data);
+extern struct api_data *api_add_avg(struct api_data *root, char *name, float *data, bool copy_data);
 
 #endif /* __MINER_H__ */

@@ -1,5 +1,5 @@
 //
-// Copyright 2013 HashFast LLC
+// Copyright 2013, 2014 HashFast Technologies LLC
 //
 // This program is free software; you can redistribute it and/or modify it
 // under the terms of the GNU General Public License as published by the Free
@@ -77,6 +77,10 @@
 #define OP_USB_STATS1                   137         // Statistics class 1
 #define OP_USB_GWQSTATS                 138         // GWQ protocol statistics
 #define OP_USB_NOTICE                   139         // Asynchronous notification event
+#define OP_PING                         140         // Echo
+#define OP_CORE_MAP                     141         // Return core map
+#define OP_VERSION                      142         // Version information
+#define OP_FAN                          143         // Set Fan Speed
 #define OP_USB_DEBUG                    255
 
 // HashFast vendor and product ID's
@@ -106,13 +110,49 @@
 #define E_BOARD_3                       14
 #define E_BOARD_4                       15
 #define E_BOARD_5                       16
+#define E_CORE_POWER_FAULT              17
+#define E_BAUD_TIMEOUT                  18
+#define E_ADDRESS_FAILURE               19
 
 #define U32SIZE(x)                      (sizeof(x)/sizeof(uint32_t))
 
+// Baud rate vs. code for gpi[7:5] coming out of reset
+#define BAUD_RATE_PWRUP_0           115200
+#define BAUD_RATE_PWRUP_1             9600
+#define BAUD_RATE_PWRUP_2            38400
+#define BAUD_RATE_PWRUP_3            57600
+#define BAUD_RATE_PWRUP_4           230400
+#define BAUD_RATE_PWRUP_5           576000
+#define BAUD_RATE_PWRUP_6           921600
+#define BAUD_RATE_PWRUP_7          1152000
+
+// OP_WORK_RESTART hash clock change methods.
+//
+// May be issued *infrequently* by the host to adjust hash clock rate for thermal control
+// The "hdata" field, if non zero, contains adjustment instructions. Bits 15:12 of "hdata"
+// contain the adjustment type according to the following code, and bits 11:0 contain the
+// associated value. Examples:
+//     hdata = (1<<12)|550 = Set hash clock rate to 550 Mhz
+//     hdata = (4<<12)|1   = Increase hash clock rate by 1%
+//     hdata = (6<<12)     = Go back to whatever the "original" OP_USB_INIT settings were
+//
+// Finally, if 4 bytes of "data" follows the OP_WORK_RESTART header, then that data is taken
+// as a little endian bitmap, bit set = enable clock change to that die, bit clear = don't
+// change clock on that die, i.e. considered as a uint32_t, then 0x1 = die 0, 0x2 = die 1 etc.
+
+#define WR_NO_CHANGE                    0
+#define WR_CLOCK_VALUE                  1
+#define WR_MHZ_INCREASE                 2
+#define WR_MHZ_DECREASE                 3
+#define WR_PERCENT_INCREASE             4
+#define WR_PERCENT_DECREASE             5
+#define WR_REVERT                       6
+
+#define WR_COMMAND_SHIFT                12
 
 // Structure definitions, LE platforms
 
-#if __BYTE_ORDER == __BIG_ENDIAN
+#if __BYTE_ORDER == __BIG_ENDIAN && !defined(WIN32)
 #include "hf_protocol_be.h"
 #else
 // Generic header
