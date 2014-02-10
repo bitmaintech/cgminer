@@ -36,7 +36,7 @@ m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
 AC_PREREQ([2.50])
 AC_PROG_CC
-LT_INIT
+AC_PROG_LIBTOOL
 LT_LANG([Windows Resource])
 AC_C_INLINE
 AM_PROG_CC_C_O
@@ -45,44 +45,26 @@ AC_DEFINE([_GNU_SOURCE], 1, [Use GNU extensions])
 LTLDFLAGS="${LTLDFLAGS} -no-undefined"
 
 AC_MSG_CHECKING([operating system])
-
-dnl on linux-android platform, some functions are in different places
 case $host in
-*-linux-android*)
-	AC_MSG_RESULT([This is a Linux-Android system])
-	is_backend_android="yes"
-	;;
-*)
-	is_backend_android="no"
-esac
-
-case $host in
-*-linux* | *-uclinux*)
+*-linux*)
 	AC_MSG_RESULT([Linux])
 	backend="linux"
-	threads="posix"
 	;;
 *-darwin*)
 	AC_MSG_RESULT([Darwin/Mac OS X])
 	backend="darwin"
-	threads="posix"
 	;;
 *-openbsd*)
 	AC_MSG_RESULT([OpenBSD])
 	backend="openbsd"
-	threads="posix"
 	;;
 *-netbsd*)
-	AC_MSG_RESULT([NetBSD])
-	backend="netbsd"
-	threads="posix"
+	AC_MSG_RESULT([NetBSD (using OpenBSD backend)])
+	backend="openbsd"
 	;;
 *-mingw*)
 	AC_MSG_RESULT([Windows])
 	backend="windows"
-	threads="windows"
-	create_import_lib="yes"
-	AM_CFLAGS="${AM_CFLAGS} -fno-omit-frame-pointer"
 	;;
 *-cygwin*)
 	AC_MSG_RESULT([Cygwin (using Windows backend)])
@@ -92,52 +74,33 @@ case $host in
 *)
 	AC_MSG_ERROR([unsupported operating system])
 esac
-
 case $backend in
 linux)
 	AC_DEFINE(OS_LINUX, 1, [Linux backend])
 	AC_SUBST(OS_LINUX)
-	AC_SEARCH_LIBS(clock_gettime, rt, [], [], -pthread)
+	AC_CHECK_LIB(rt, clock_gettime, -pthread)
 	AC_ARG_ENABLE([udev],
-		[AC_HELP_STRING([--enable-udev], [use udev for device enumeration and hotplug support (recommended) [default=yes]])],
-		[], [enable_udev="yes"])
-		if test "x$enable_udev" = "xyes" ; then
-			# system has udev. use it or fail!
-			AC_CHECK_HEADERS([libudev.h],[],[AC_ERROR(["udev support requested but libudev not installed"])])
-			AC_CHECK_LIB([udev], [udev_new], [], [AC_ERROR(["udev support requested but libudev not installed"])])
-			AC_DEFINE(USE_UDEV, 1, [Use udev for device enumeration/hotplug])
-		else
-			AC_CHECK_HEADERS([asm/types.h sys/socket.h], [], [])
-			AC_CHECK_HEADERS([linux/netlink.h linux/filter.h], [], [AC_ERROR(["Linux netlink headers not found"])], [
-#ifdef HAVE_ASM_TYPES_H
-#include <asm/types.h>
-#endif
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-])
-		fi
-		AC_SUBST(USE_UDEV)
-
-case $is_backend_android in
-yes)
-	dnl some pthread functions is in libc
-	THREAD_CFLAGS="-c"
-	LIBS="${LIBS} -c"
-	dnl there are gettimeofday function but configure doesn't seem to be able to find it.
-	AC_DEFINE([HAVE_GETTIMEOFDAY], [1], [Define if you have gettimeofday])
-	;;
-*)
+                      [AC_HELP_STRING([--with-udev], [use udev for device enumeration and hotplug support (recommended, default: yes)])],
+                      [], [enable_udev="yes"])
+        if test "x$enable_udev" = "xyes" ; then
+                # system has udev. use it or fail!
+                AC_CHECK_HEADERS([libudev.h],[],[AC_ERROR(["udev support requested but libudev not installed"])])
+                AC_CHECK_LIB([udev], [udev_new], [], [AC_ERROR(["udev support requested but libudev not installed"])])
+                AC_DEFINE(USE_UDEV, 1, [Use udev for device enumeration/hotplug])
+        else
+                AC_CHECK_HEADERS([linux/netlink.h linux/filter.h], [], [AC_ERROR(["Linux netlink headers not found"])])
+        fi
+        AC_SUBST(USE_UDEV)
+	threads="posix"
 	THREAD_CFLAGS="-pthread"
 	LIBS="${LIBS} -pthread"
-esac
-
 	AC_CHECK_HEADERS([poll.h])
 	AC_DEFINE([POLL_NFDS_TYPE],[nfds_t],[type of second poll() argument])
 	;;
 darwin)
 	AC_DEFINE(OS_DARWIN, 1, [Darwin backend])
 	AC_SUBST(OS_DARWIN)
+	threads="posix"
 	LIBS="-lobjc -Wl,-framework,IOKit -Wl,-framework,CoreFoundation"
 	LTLDFLAGS="${LTLDFLAGS} -Wl,-prebind"
 	AC_CHECK_HEADERS([poll.h])
@@ -149,14 +112,7 @@ darwin)
 openbsd)
 	AC_DEFINE(OS_OPENBSD, 1, [OpenBSD backend])
 	AC_SUBST(OS_OPENBSD)
-	THREAD_CFLAGS="-pthread"
-	LIBS="-pthread"
-	AC_CHECK_HEADERS([poll.h])
-	AC_DEFINE([POLL_NFDS_TYPE],[nfds_t],[type of second poll() argument])
-	;;
-netbsd)
-	AC_DEFINE(OS_NETBSD, 1, [NetBSD backend])
-	AC_SUBST(OS_NETBSD)
+	threads="posix"
 	THREAD_CFLAGS="-pthread"
 	LIBS="-pthread"
 	AC_CHECK_HEADERS([poll.h])
@@ -170,16 +126,13 @@ windows)
 	AC_DEFINE([POLL_NFDS_TYPE],[unsigned int],[type of second poll() argument])
 	;;
 esac
-
 AC_SUBST(LIBS)
 
 AM_CONDITIONAL(OS_LINUX, test "x$backend" = xlinux)
 AM_CONDITIONAL(OS_DARWIN, test "x$backend" = xdarwin)
 AM_CONDITIONAL(OS_OPENBSD, test "x$backend" = xopenbsd)
-AM_CONDITIONAL(OS_NETBSD, test "x$backend" = xnetbsd)
 AM_CONDITIONAL(OS_WINDOWS, test "x$backend" = xwindows)
 AM_CONDITIONAL(THREADS_POSIX, test "x$threads" = xposix)
-AM_CONDITIONAL(CREATE_IMPORT_LIB, test "x$create_import_lib" = "xyes")
 AM_CONDITIONAL(USE_UDEV, test "x$enable_udev" = xyes)
 if test "$threads" = posix; then
 	AC_DEFINE(THREADS_POSIX, 1, [Use POSIX Threads])
@@ -189,7 +142,7 @@ fi
 AC_CHECK_HEADER([sys/timerfd.h], [timerfd_h=1], [timerfd_h=0])
 AC_ARG_ENABLE([timerfd],
 	[AS_HELP_STRING([--enable-timerfd],
-		[use timerfd for timing [default=auto]])],
+		[use timerfd for timing (default auto)])],
 	[use_timerfd=$enableval], [use_timerfd='auto'])
 
 if test "x$use_timerfd" = "xyes" -a "x$timerfd_h" = "x0"; then
@@ -224,27 +177,19 @@ if test "x$log_enabled" != "xno"; then
 fi
 
 AC_ARG_ENABLE([debug-log], [AS_HELP_STRING([--enable-debug-log],
-	[start with debug message logging enabled [default=no]])],
+	[enable debug logging (default n)])],
 	[debug_log_enabled=$enableval],
 	[debug_log_enabled='no'])
 if test "x$debug_log_enabled" != "xno"; then
-	AC_DEFINE([ENABLE_DEBUG_LOGGING], 1, [Start with debug message logging enabled])
+	AC_DEFINE([ENABLE_DEBUG_LOGGING], 1, [Debug message logging])
 fi
 
-AC_ARG_ENABLE([system-log], [AS_HELP_STRING([--enable-system-log],
-	[output logging messages to system wide log, if supported by the OS [default=no]])],
-	[system_log_enabled=$enableval],
-	[system_log_enabled='no'])
-if test "x$system_log_enabled" != "xno"; then
-	AC_DEFINE([USE_SYSTEM_LOGGING_FACILITY], 1, [Enable output to system log])
-fi
-
-# Check if syslog is available in standard C library
-AC_CHECK_HEADERS(syslog.h)
-AC_CHECK_FUNC([syslog], [have_syslog=yes], [have_syslog=no])
-if test "x$have_syslog" != "xno"; then
-	AC_DEFINE([HAVE_SYSLOG_FUNC], 1, [syslog() function available])
-fi
+# Examples build
+AC_ARG_ENABLE([examples-build], [AS_HELP_STRING([--enable-examples-build],
+	[build example applications (default n)])],
+	[build_examples=$enableval],
+	[build_examples='no'])
+AM_CONDITIONAL([BUILD_EXAMPLES], [test "x$build_examples" != "xno"])
 
 # check for -fvisibility=hidden compiler support (GCC >= 3.4)
 saved_cflags="$CFLAGS"
@@ -272,9 +217,8 @@ AM_CONDITIONAL([HAVE_SIGACTION], [test "x$have_sigaction" = "xyes"])
 # headers not available on all platforms but required on others
 AC_CHECK_HEADERS([sys/time.h])
 AC_CHECK_FUNCS(gettimeofday)
-AC_CHECK_HEADERS([signal.h])
 
-AM_CFLAGS="${AM_CFLAGS} -std=gnu99 -Wall -Wundef -Wunused -Wstrict-prototypes -Werror-implicit-function-declaration $nopointersign_cflags -Wshadow ${THREAD_CFLAGS} ${VISIBILITY_CFLAGS}"
+AM_CFLAGS="-std=gnu99 -Wall -Wundef -Wunused -Wstrict-prototypes -Werror-implicit-function-declaration $nopointersign_cflags -Wshadow ${THREAD_CFLAGS} ${VISIBILITY_CFLAGS}"
 
 AC_SUBST(AM_CFLAGS)
 AC_SUBST(LTLDFLAGS)

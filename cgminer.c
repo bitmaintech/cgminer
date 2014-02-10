@@ -164,8 +164,11 @@ bool opt_api_network;
 bool opt_delaynet;
 bool opt_disable_pool;
 static bool no_work;
+#ifdef USE_ICARUS
 char *opt_icarus_options = NULL;
 char *opt_icarus_timing = NULL;
+int opt_anu_freq = 200;
+#endif
 bool opt_worktime;
 #ifdef USE_AVALON
 char *opt_avalon_options = NULL;
@@ -348,7 +351,6 @@ int opt_dynamic_interval = 7;
 int opt_g_threads = -1;
 int gpu_threads;
 #endif
-char *opt_bmsc_freq = "0781";
 
 static bool time_before(struct tm *tm1, struct tm *tm2)
 {
@@ -1049,13 +1051,19 @@ static char *set_icarus_timing(const char *arg)
 	return NULL;
 }
 
-static char *set_bmsc_freq(const char *arg)
+static char *set_int_150_to_500(const char *arg, int *i)
 {
-	opt_set_charp(arg, &opt_bmsc_freq);
+	char *err = set_int_range(arg, i, 150, 500);
+	int mult;
 
+	if (err)
+		return err;
+	mult = *i / 25;
+	mult *= 25;
+	if (mult != *i)
+		return "Frequency must be a multiple of 25";
 	return NULL;
 }
-
 #endif
 
 #ifdef USE_AVALON
@@ -1117,6 +1125,11 @@ static char *set_null(const char __maybe_unused *arg)
 
 /* These options are available from config file or commandline */
 static struct opt_table opt_config_table[] = {
+#ifdef USE_ICARUS
+	OPT_WITH_ARG("--anu-freq",
+		     set_int_150_to_500, &opt_show_intval, &opt_anu_freq,
+		     "Set AntminerU1 frequency in MHz, range 150-500"),
+#endif
 	OPT_WITH_ARG("--api-allow",
 		     set_api_allow, NULL, NULL,
 		     "Allow API access only to the given list of [G:]IP[/Prefix] addresses[/subnets]"),
@@ -1150,6 +1163,31 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--api-port",
 		     set_int_1_to_65535, opt_show_intval, &opt_api_port,
 		     "Port number of miner API"),
+#ifdef USE_AVALON
+	OPT_WITHOUT_ARG("--avalon-auto",
+			opt_set_bool, &opt_avalon_auto,
+			"Adjust avalon overclock frequency dynamically for best hashrate"),
+	OPT_WITH_ARG("--avalon-cutoff",
+		     set_int_0_to_100, opt_show_intval, &opt_avalon_overheat,
+		     "Set avalon overheat cut off temperature"),
+	OPT_WITH_ARG("--avalon-fan",
+		     set_avalon_fan, NULL, NULL,
+		     "Set fanspeed percentage for avalon, single value or range (default: 20-100)"),
+	OPT_WITH_ARG("--avalon-freq",
+		     set_avalon_freq, NULL, NULL,
+		     "Set frequency range for avalon-auto, single value or range"),
+	OPT_WITH_ARG("--avalon-options",
+		     set_avalon_options, NULL, NULL,
+		     "Set avalon options baud:miners:asic:timeout:freq:tech"),
+	OPT_WITH_ARG("--avalon-temp",
+		     set_int_0_to_100, opt_show_intval, &opt_avalon_temp,
+		     "Set avalon target temperature"),
+#endif
+#ifdef USE_BAB
+	OPT_WITH_ARG("--bab-options",
+		     set_bab_options, NULL, NULL,
+		     "Set bab options max:def:min:up:down:hz:delay:trf"),
+#endif
 	OPT_WITHOUT_ARG("--balance",
 		     set_balance, &pool_strategy,
 		     "Change multipool strategy from failover to even share balance"),
@@ -1165,6 +1203,17 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--bflsc-overheat",
 		     set_int_0_to_200, opt_show_intval, &opt_bflsc_overheat,
 		     "Set overheat temperature where BFLSC devices throttle, 0 to disable"),
+#endif
+#ifdef USE_AVALON
+	OPT_WITH_ARG("--bitburner-voltage",
+		     opt_set_intval, NULL, &opt_bitburner_core_voltage,
+		     "Set BitBurner (Avalon) core voltage, in millivolts"),
+	OPT_WITH_ARG("--bitburner-fury-voltage",
+		     opt_set_intval, NULL, &opt_bitburner_fury_core_voltage,
+		     "Set BitBurner Fury core voltage, in millivolts"),
+	OPT_WITH_ARG("--bitburner-fury-options",
+		     set_bitburner_fury_options, NULL, NULL,
+		     "Override avalon-options for BitBurner Fury boards baud:miners:asic:timeout:freq"),
 #endif
 #ifdef USE_BITFURY
 	OPT_WITH_ARG("--bxf-temp-target",
@@ -1185,6 +1234,11 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--disable-rejecting",
 			opt_set_bool, &opt_disable_pool,
 			"Automatically disable pools that continually reject shares"),
+#ifdef USE_DRILLBIT
+        OPT_WITH_ARG("--drillbit-options",
+                     set_drillbit_options, NULL, NULL,
+                     "Set drillbit options <int|ext>:clock[:clock_divider][:voltage]"),
+#endif
 	OPT_WITH_ARG("--expiry|-E",
 		     set_int_0_to_9999, opt_show_intval, &opt_expiry,
 		     "Upper bound on how many seconds after getting work we consider a share from it stale"),
@@ -1194,59 +1248,6 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--fix-protocol",
 			opt_set_bool, &opt_fix_protocol,
 			"Do not redirect to a different getwork protocol (eg. stratum)"),
-	OPT_WITH_ARG("--hotplug",
-		     set_int_0_to_9999, NULL, &hotplug_time,
-#ifdef USE_USBUTILS
-		     "Seconds between hotplug checks (0 means never check)"
-#else
-		     opt_hidden
-#endif
-		    ),
-#if defined(HAVE_MODMINER) || defined(HAVE_OPENCL)
-	OPT_WITH_ARG("--kernel-path|-K",
-		     opt_set_charp, opt_show_charp, &opt_kernel_path,
-	             "Specify a path to where bitstream files are"),
-#endif
-#ifdef USE_ICARUS
-	OPT_WITH_ARG("--icarus-options",
-		     set_icarus_options, NULL, NULL,
-		     opt_hidden),
-	OPT_WITH_ARG("--icarus-timing",
-		     set_icarus_timing, NULL, NULL,
-		     opt_hidden),
-	OPT_WITH_ARG("--bmsc-freq",
-		     set_bmsc_freq, NULL, NULL,
-		     opt_hidden),
-#endif
-#ifdef USE_AVALON
-	OPT_WITHOUT_ARG("--avalon-auto",
-			opt_set_bool, &opt_avalon_auto,
-			"Adjust avalon overclock frequency dynamically for best hashrate"),
-	OPT_WITH_ARG("--avalon-cutoff",
-		     set_int_0_to_100, opt_show_intval, &opt_avalon_overheat,
-		     "Set avalon overheat cut off temperature"),
-	OPT_WITH_ARG("--avalon-fan",
-		     set_avalon_fan, NULL, NULL,
-		     "Set fanspeed percentage for avalon, single value or range (default: 20-100)"),
-	OPT_WITH_ARG("--avalon-freq",
-		     set_avalon_freq, NULL, NULL,
-		     "Set frequency range for avalon-auto, single value or range"),
-	OPT_WITH_ARG("--avalon-options",
-		     set_avalon_options, NULL, NULL,
-		     "Set avalon options baud:miners:asic:timeout:freq:tech"),
-	OPT_WITH_ARG("--avalon-temp",
-		     set_int_0_to_100, opt_show_intval, &opt_avalon_temp,
-		     "Set avalon target temperature"),
-	OPT_WITH_ARG("--bitburner-voltage",
-		     opt_set_intval, NULL, &opt_bitburner_core_voltage,
-		     "Set BitBurner (Avalon) core voltage, in millivolts"),
-	OPT_WITH_ARG("--bitburner-fury-voltage",
-		     opt_set_intval, NULL, &opt_bitburner_fury_core_voltage,
-		     "Set BitBurner Fury core voltage, in millivolts"),
-	OPT_WITH_ARG("--bitburner-fury-options",
-		     set_bitburner_fury_options, NULL, NULL,
-		     "Override avalon-options for BitBurner Fury boards baud:miners:asic:timeout:freq"),
-#endif
 #ifdef USE_HASHFAST
 	OPT_WITHOUT_ARG("--hfa-dfu-boot",
 			opt_set_bool, &opt_hfa_dfu_boot,
@@ -1254,6 +1255,9 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--hfa-hash-clock",
 		     set_int_0_to_9999, opt_show_intval, &opt_hfa_hash_clock,
 		     "Set hashfast clock speed"),
+	OPT_WITH_ARG("--hfa-fan",
+		     set_hfa_fan, NULL, NULL,
+		     "Set fanspeed percentage for hashfast, single value or range (default: 10-85)"),
 	OPT_WITH_ARG("--hfa-ntime-roll",
 		     opt_set_intval, NULL, &opt_hfa_ntime_roll,
 		     opt_hidden),
@@ -1267,20 +1271,31 @@ static struct opt_table opt_config_table[] = {
 		     set_int_0_to_200, opt_show_intval, &opt_hfa_target,
 		     "Set the hashfast target temperature (0 to disable)"),
 #endif
+	OPT_WITH_ARG("--hotplug",
+		     set_int_0_to_9999, NULL, &hotplug_time,
+#ifdef USE_USBUTILS
+		     "Seconds between hotplug checks (0 means never check)"
+#else
+		     opt_hidden
+#endif
+		    ),
+#ifdef USE_ICARUS
+	OPT_WITH_ARG("--icarus-options",
+		     set_icarus_options, NULL, NULL,
+		     opt_hidden),
+	OPT_WITH_ARG("--icarus-timing",
+		     set_icarus_timing, NULL, NULL,
+		     opt_hidden),
+#endif
+#if defined(HAVE_MODMINER)
+	OPT_WITH_ARG("--kernel-path|-K",
+		     opt_set_charp, opt_show_charp, &opt_kernel_path,
+	             "Specify a path to where bitstream files are"),
+#endif
 #ifdef USE_KLONDIKE
 	OPT_WITH_ARG("--klondike-options",
 		     set_klondike_options, NULL, NULL,
 		     "Set klondike options clock:temptarget"),
-#endif
-#ifdef USE_DRILLBIT
-        OPT_WITH_ARG("--drillbit-options",
-                     set_drillbit_options, NULL, NULL,
-                     "Set drillbit options <int|ext>:clock[:clock_divider][:voltage]"),
-#endif
-#ifdef USE_BAB
-	OPT_WITH_ARG("--bab-options",
-		     set_bab_options, NULL, NULL,
-		     "Set bab options max:def:min:up:down:hz:delay:trf"),
 #endif
 	OPT_WITHOUT_ARG("--load-balance",
 		     set_loadbalance, &pool_strategy,
@@ -1316,6 +1331,8 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--per-device-stats",
 			opt_set_bool, &want_per_device_stats,
 			"Force verbose mode and output per-device statistics"),
+	OPT_WITH_ARG("--pools",
+			opt_set_bool, NULL, NULL, opt_hidden),
 	OPT_WITHOUT_ARG("--protocol-dump|-P",
 			opt_set_bool, &opt_protocol,
 			"Verbose dump of protocol-level activities"),
@@ -1390,9 +1407,6 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITH_ARG("--url|-o",
 		     set_url, NULL, NULL,
 		     "URL for bitcoin JSON-RPC server"),
-	OPT_WITH_ARG("--user|-u",
-		     set_user, NULL, NULL,
-		     "Username for bitcoin JSON-RPC server"),
 #ifdef USE_USBUTILS
 	OPT_WITH_ARG("--usb",
 		     set_usb_select, NULL, NULL,
@@ -1404,6 +1418,12 @@ static struct opt_table opt_config_table[] = {
 			opt_set_bool, &opt_usb_list_all,
 			opt_hidden),
 #endif
+	OPT_WITH_ARG("--user|-u",
+		     set_user, NULL, NULL,
+		     "Username for bitcoin JSON-RPC server"),
+	OPT_WITH_ARG("--userpass|-O",
+		     set_userpass, NULL, NULL,
+		     "Username:Password pair for bitcoin JSON-RPC server"),
 	OPT_WITHOUT_ARG("--verbose",
 			opt_set_bool, &opt_log_output,
 			"Log verbose output to stderr as well as status output"),
@@ -1415,6 +1435,11 @@ static struct opt_table opt_config_table[] = {
 			"Display extra work time debug information"),
 	OPT_WITH_ARG("--pools",
 			opt_set_bool, NULL, NULL, opt_hidden),
+#if defined(HAVE_MODMINER) || defined(HAVE_OPENCL)
+	OPT_WITH_ARG("--kernel-path|-K",
+		     opt_set_charp, opt_show_charp, &opt_kernel_path,
+	             "Specify a path to where bitstream files are"),
+#endif
 #ifdef HAVE_OPENCL
 	OPT_WITHOUT_ARG("--disable-gpu|-G",
 			opt_set_bool, &opt_nogpu,
@@ -2361,7 +2386,7 @@ static void curses_print_status(void)
 	wattron(statuswin, A_BOLD);
 	cg_mvwprintw(statuswin, 0, 0, " " PACKAGE " version " VERSION " - Started: %s", datestamp);
 	wattroff(statuswin, A_BOLD);
-	mvwhline(statuswin, 1, 0, '-', 80);
+	mvwhline(statuswin, 1, 0, '-', 90);
 	cg_mvwprintw(statuswin, 2, 0, " %s", statusline);
 	wclrtoeol(statuswin);
 	cg_mvwprintw(statuswin, 3, 0, " ST: %d  SS: %d  NB: %d  LW: %d  GF: %d  RF: %d",
@@ -4669,12 +4694,12 @@ void write_config(FILE *fcfg)
 		fprintf(fcfg, ",\n\"api-description\" : \"%s\"", json_escape(opt_api_description));
 	if (opt_api_groups)
 		fprintf(fcfg, ",\n\"api-groups\" : \"%s\"", json_escape(opt_api_groups));
+#ifdef USE_ICARUS
 	if (opt_icarus_options)
 		fprintf(fcfg, ",\n\"icarus-options\" : \"%s\"", json_escape(opt_icarus_options));
 	if (opt_icarus_timing)
 		fprintf(fcfg, ",\n\"icarus-timing\" : \"%s\"", json_escape(opt_icarus_timing));
-	if (opt_bmsc_freq)
-		fprintf(fcfg, ",\n\"bmsc-freq\" : \"%s\"", json_escape(opt_bmsc_freq));
+#endif
 #ifdef USE_KLONDIKE
 	if (opt_klondike_options)
 		fprintf(fcfg, ",\n\"klondike-options\" : \"%s\"", json_escape(opt_klondike_options));
@@ -6041,29 +6066,35 @@ static void pool_resus(struct pool *pool)
 		applog(LOG_INFO, "Pool %d %s alive", pool->pool_no, pool->rpc_url);
 }
 
-static struct work *hash_pop(void)
+/* If this is called non_blocking, it will return NULL for work so that must
+ * be handled. */
+static struct work *hash_pop(bool blocking)
 {
 	struct work *work = NULL, *tmp;
 	int hc;
 
 	mutex_lock(stgd_lock);
-	while (!HASH_COUNT(staged_work)) {
-		struct timespec then;
-		struct timeval now;
-		int rc;
+	if (!HASH_COUNT(staged_work)) {
+		if (!blocking)
+			goto out_unlock;
+		do {
+			struct timespec then;
+			struct timeval now;
+			int rc;
 
-		cgtime(&now);
-		then.tv_sec = now.tv_sec + 10;
-		then.tv_nsec = now.tv_usec * 1000;
-		pthread_cond_signal(&gws_cond);
-		rc = pthread_cond_timedwait(&getq->cond, stgd_lock, &then);
-		/* Check again for !no_work as multiple threads may be
-			* waiting on this condition and another may set the
-			* bool separately. */
-		if (rc && !no_work) {
-			no_work = true;
-			applog(LOG_WARNING, "Waiting for work to be available from pools.");
-		}
+			cgtime(&now);
+			then.tv_sec = now.tv_sec + 10;
+			then.tv_nsec = now.tv_usec * 1000;
+			pthread_cond_signal(&gws_cond);
+			rc = pthread_cond_timedwait(&getq->cond, stgd_lock, &then);
+			/* Check again for !no_work as multiple threads may be
+				* waiting on this condition and another may set the
+				* bool separately. */
+			if (rc && !no_work) {
+				no_work = true;
+				applog(LOG_WARNING, "Waiting for work to be available from pools.");
+			}
+		} while (!HASH_COUNT(staged_work));
 	}
 
 	if (no_work) {
@@ -6089,6 +6120,10 @@ static struct work *hash_pop(void)
 
 	/* Signal hash_pop again in case there are mutliple hash_pop waiters */
 	pthread_cond_signal(&getq->cond);
+
+	/* Keep track of last getwork grabbed */
+	last_getwork = time(NULL);
+out_unlock:
 	mutex_unlock(stgd_lock);
 
 	return work;
@@ -6238,18 +6273,27 @@ static void gen_stratum_work(struct pool *pool, struct work *work)
 struct work *get_work(struct thr_info *thr, const int thr_id)
 {
 	struct work *work = NULL;
+	time_t diff_t;
 
 	thread_reportout(thr);
 	applog(LOG_DEBUG, "Popping work from get queue to get work");
+	diff_t = time(NULL);
 	while (!work) {
-		work = hash_pop();
+		work = hash_pop(true);
 		if (stale_work(work, false)) {
 			discard_work(work);
 			work = NULL;
 			wake_gws();
 		}
 	}
-	last_getwork = time(NULL);
+	diff_t = time(NULL) - diff_t;
+	/* Since this is a blocking function, we need to add grace time to
+	 * the device's last valid work to not make outages appear to be
+	 * device failures. */
+	if (diff_t > 0) {
+		applog(LOG_DEBUG, "Get work blocked for %d seconds", (int)diff_t);
+		thr->cgpu->last_device_valid_work += diff_t;
+	}
 	applog(LOG_DEBUG, "Got work from get queue to get work for thread %d", thr_id);
 
 	work->thr_id = thr_id;
@@ -6382,7 +6426,8 @@ bool submit_tested_work(struct thr_info *thr, struct work *work)
 	update_work_stats(thr, work);
 
 	if (!fulltest(work->hash, work->target)) {
-		applog(LOG_INFO, "Share above target");
+		applog(LOG_INFO, "%s %d: Share above target", thr->cgpu->drv->name,
+		       thr->cgpu->device_id);
 		return false;
 	}
 	work_out = copy_work(work);
@@ -6421,7 +6466,8 @@ bool submit_noffset_nonce(struct thr_info *thr, struct work *work_in, uint32_t n
 	ret = true;
 	update_work_stats(thr, work);
 	if (!fulltest(work->hash, work->target)) {
-		applog(LOG_INFO, "Share above target");
+		applog(LOG_INFO, "%s %d: Share above target", thr->cgpu->drv->name,
+		       thr->cgpu->device_id);
 		goto  out;
 	}
 	submit_work_async(work);
@@ -8683,8 +8729,15 @@ begin_bench:
 		}
 		mutex_unlock(stgd_lock);
 
-		if (ts > max_staged)
+		if (ts > max_staged) {
+			/* Keeps slowly generating work even if it's not being
+			 * used to keep last_getwork incrementing and to see
+			 * if pools are still alive. */
+			work = hash_pop(false);
+			if (work)
+				discard_work(work);
 			continue;
+		}
 
 		work = make_work();
 
