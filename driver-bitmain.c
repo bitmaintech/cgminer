@@ -2497,4 +2497,5 @@ struct device_drv bitmain_drv = {
 	.get_statline_before = get_bitmain_statline_before,
 	.reinit_device = bitmain_init,
 	.thread_shutdown = bitmain_shutdown,
+	.min_diff = 16,
 };
